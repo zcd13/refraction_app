@@ -87,7 +87,6 @@ impl Geometry {
     }
 
     pub fn intersect(&self, ro: Vec2, rd: Vec2) -> Option<(Vec2, u32, Vec2)> {
-
         match &self.ty {
             GeometryType::Polygon(vertices) => {
                 let cos = (-self.rot).cos();

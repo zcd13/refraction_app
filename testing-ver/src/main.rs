@@ -192,11 +192,11 @@ fn restore_default_blending() {
 
 
 const LINE_THICK: f32 = 0.5;
-const MAX_BOUNCE: u32 = 30;
-const NO_LAZERS: usize = 5000;
+const MAX_BOUNCE: u32 = 300000;
+const NO_LAZERS: usize = 500000;
 const OFFSET: f32 = 0.00001;
 const DISPENSER: f32 = 0.03;
-const CUTOFF: f32 = 0.05;
+const CUTOFF: f32 = 0.000005;
 async fn light_bounce_test() {
     let mut poi = Vec2::new(to_logical(Vec2::ZERO).x, 0.0);
     let mut pd = Vec2::ZERO;
@@ -204,7 +204,7 @@ async fn light_bounce_test() {
     // let poly = Geometry::circle_poly(40)
     //     .with_scale(0.5);
     
-    let poly = Geometry::circle()
+    let poly = Geometry::circle_poly(15)
         .with_scale(0.5);
 
 

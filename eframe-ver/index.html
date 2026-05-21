@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>My eframe App</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Prevents scrollbars if the canvas is 1px too big */
+        }
+
+        /* Make the canvas fill its parent and behave like a block element */
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+<!-- eframe will automatically look for a canvas with this id -->
+<canvas id="the_canvas_id"></canvas>
+</body>
+</html>
