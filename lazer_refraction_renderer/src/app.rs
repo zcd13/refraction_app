@@ -13,6 +13,7 @@ use crate::background::wgpu_app::WgpuApplication;
 
 pub struct EframeApp {
     wgpu_manager: Option<WgpuManager>,
+    frame_pack: FramePack,
 }
 impl Default for EframeApp {
     fn default() -> Self {
@@ -22,18 +23,25 @@ impl Default for EframeApp {
 
 impl EframeApp {
     pub fn new() -> Self {
-        Self { wgpu_manager: None }
+        Self {
+            wgpu_manager: None,
+            frame_pack: Default::default()
+        }
     }
 }
 impl App for EframeApp {
     fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
+        let txt = format!("Frame time {:?}", self.frame_pack.frametime);
+        ui.heading(&txt);
+
         if self.wgpu_manager.is_none() {
             let res = frame.wgpu_render_state().unwrap();
             let size = ui.available_size();
             self.wgpu_manager = Some(WgpuManager::start(res, (size.x as u32, size.y as u32)));
         }
         if let Some(wgpu_manager) = &mut self.wgpu_manager {
-            wgpu_manager.render_frame(ui, frame.wgpu_render_state().unwrap());
+            let f = wgpu_manager.render_frame(ui, frame.wgpu_render_state().unwrap());
+            if let Some(f) = f { self.frame_pack = f };
         }
 
         ui.ctx().request_repaint_after(Duration::from_millis(7));
@@ -140,14 +148,17 @@ impl WgpuManager {
             format,
             usage: TextureUsages::RENDER_ATTACHMENT
                 | TextureUsages::COPY_DST
-                | TextureUsages::COPY_DST,
+                | TextureUsages::COPY_SRC
+                | TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let view = texture.create_view(&TextureViewDescriptor::default());
         (texture, view)
     }
 
-    pub fn render_frame(&mut self, ui: &mut Ui, render_state: &RenderState) {
+    pub fn render_frame(&mut self, ui: &mut Ui, render_state: &RenderState) -> Option<FramePack> {
+        let mut framepack = None;
+
         let size_v = ui.available_size();
         let size = (size_v.x as u32, size_v.y as u32);
 
@@ -169,20 +180,24 @@ impl WgpuManager {
             self.rf_sender.send(Some((size, other_view))).unwrap();
             ui.spinner();
         } else {
-            if let Ok(_frame_time) = self.fin_recv.try_recv() {
+            if let Ok(frametime) = self.fin_recv.try_recv() {
+                framepack = Some(FramePack {
+                    frametime,
+                });
+
                 let mut encoder = self
                     .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Weird fucky encoder") });
                 encoder.copy_texture_to_texture(
                     TexelCopyTextureInfo {
                         texture: &self.background_tex,
-                        mip_level: 1,
+                        mip_level: 0,
                         origin: Default::default(),
                         aspect: Default::default(),
                     },
                     TexelCopyTextureInfo {
                         texture: &self.render_texture,
-                        mip_level: 1,
+                        mip_level: 0,
                         origin: Default::default(),
                         aspect: Default::default(),
                     },
@@ -203,6 +218,16 @@ impl WgpuManager {
                     mipmap_mode: None,
                 });
             image.ui(ui);
+
+            self.rf_sender.send(None).unwrap();
         }
+
+
+        framepack
     }
+}
+
+#[derive(Default)]
+pub struct FramePack {
+    frametime: Duration,
 }

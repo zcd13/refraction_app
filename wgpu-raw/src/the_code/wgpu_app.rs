@@ -1,8 +1,9 @@
 #![allow(unused_variables)]
 
-use eframe::wgpu::{Device, Queue, TextureView};
-use crate::app::StartupInfo;
+use wgpu::{Device, Queue, TextureView};
+use crate::the_code::StartupInfo;
 
+#[derive(Debug)]
 pub struct WgpuApplication {}
 impl WgpuApplication {
     pub fn init(startup_info: StartupInfo, device: Device, queue: Queue) -> Self {

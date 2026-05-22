@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
-use eframe::wgpu::{Adapter, BackendOptions, Backends, DeviceDescriptor, InstanceDescriptor, InstanceFlags, MemoryBudgetThresholds, PowerPreference};
+use eframe::wgpu::{Adapter, BackendOptions, Backends, DeviceDescriptor, ExperimentalFeatures, InstanceDescriptor, InstanceFlags, MemoryBudgetThresholds, PowerPreference};
 use lazer_refraction_renderer::app::EframeApp;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -27,9 +27,10 @@ fn main() {
                         label: Some("Device Desc native"),
                         required_features: adapter.features(),
                         required_limits: adapter.limits(),
+                        experimental_features: unsafe { ExperimentalFeatures::enabled() },
                         memory_hints: Default::default(),
                         trace: Default::default(),
-                        ..Default::default()
+
                     }
                 }),
             }),
