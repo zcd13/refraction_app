@@ -6,6 +6,10 @@ mod scene;
 mod geometry;
 mod wgpu_res;
 
+use std::sync::Arc;
+use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
+use eframe::wgpu::{BackendOptions, Backends, ExperimentalFeatures, Features, InstanceDescriptor, InstanceFlags, Limits, MemoryBudgetThresholds, PowerPreference};
+use eframe::wgpu::wgt::DeviceDescriptor;
 use crate::app::App;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -15,6 +19,31 @@ fn main() {
     let native_options = NativeOptions {
         vsync: false,
         renderer: Renderer::Wgpu,
+        wgpu_options: WgpuConfiguration {
+            wgpu_setup: WgpuSetup::CreateNew(WgpuSetupCreateNew {
+                instance_descriptor: InstanceDescriptor {
+                    backends: Backends::all(),
+                    flags: InstanceFlags::empty(),
+                    memory_budget_thresholds: MemoryBudgetThresholds::default(),
+                    backend_options: BackendOptions::default(),
+                    display: None,
+                },
+                display_handle: None,
+                power_preference: PowerPreference::HighPerformance ,
+                native_adapter_selector: None,
+                device_descriptor: Arc::new(|adapter| {
+                    DeviceDescriptor {
+                        label: Some("Device Desc native"),
+                        required_features: adapter.features(),
+                        required_limits: adapter.limits(),
+                        experimental_features: unsafe { ExperimentalFeatures::enabled() },
+                        memory_hints: Default::default(),
+                        trace: Default::default(),
+                    }
+                }),
+            }),
+            ..Default::default()
+        },
         ..Default::default()
     };
 
