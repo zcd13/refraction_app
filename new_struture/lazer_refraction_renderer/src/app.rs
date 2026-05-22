@@ -2,7 +2,7 @@ use eframe::egui::{Image, TextureFilter, TextureId, TextureOptions, Ui, Widget};
 use eframe::egui_wgpu::RenderState;
 use eframe::wgpu::wgt::{PollType, TextureViewDescriptor};
 use eframe::wgpu::{
-    Device, FilterMode, Queue, TexelCopyTextureInfo, Texture, TextureFormat, TextureUsages,
+    Device, FilterMode, TexelCopyTextureInfo, Texture, TextureFormat, TextureUsages,
     TextureView,
 };
 use eframe::{wgpu, App, Frame};
@@ -14,6 +14,12 @@ use crate::background::wgpu_app::WgpuApplication;
 pub struct EframeApp {
     wgpu_manager: Option<WgpuManager>,
 }
+impl Default for EframeApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EframeApp {
     pub fn new() -> Self {
         Self { wgpu_manager: None }
@@ -27,7 +33,7 @@ impl App for EframeApp {
             self.wgpu_manager = Some(WgpuManager::start(res, (size.x as u32, size.y as u32)));
         }
         if let Some(wgpu_manager) = &mut self.wgpu_manager {
-            wgpu_manager.render_frame(ui, &frame.wgpu_render_state().unwrap());
+            wgpu_manager.render_frame(ui, frame.wgpu_render_state().unwrap());
         }
 
         ui.ctx().request_repaint_after(Duration::from_millis(7));
