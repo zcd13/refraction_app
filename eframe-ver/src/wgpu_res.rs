@@ -1,3 +1,5 @@
+use std::fmt;
+use std::fmt::Debug;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use eframe::egui::Vec2;
@@ -31,17 +33,17 @@ impl From<Vec2> for Vertex {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LightRay {
-    pub position: [f32; 2],           // 8
-    pub draw_last_position: [f32; 2], // 8
-    pub wavelength: f32,              // 4
-    pub strength: f32,                // 4
-    // [0 = active], [1 = exited out of bounds - draw once], [2 = has been rendered - ignore]
-    pub ray_status: u32, // 4
-
-    pub direction: [f32; 2],              // 8
-    pub current_index_of_refraction: f32, // 4
+    pub position: [f32; 2],           // Offset 0
+    pub draw_last_position: [f32; 2], // Offset 8
+    pub wavelength: f32,              // Offset 16
+    pub strength: f32,                // Offset 20
+    pub ray_status: u32,              // Offset 24
+    pub _pad1: u32,                   // Offset 28 <--- ADD THIS
+    pub direction: [f32; 2],          // Offset 32 (Now matches WGSL alignment)
+    pub current_ior: f32,             // Offset 40
+    pub _pad2: u32,                   // Offset 44 <--- ADD THIS to make total 48
 }
 
 #[test]
@@ -91,6 +93,7 @@ impl LightRay {
     }
 }
 
+
 pub struct BigBufPack {
     pub buffer: Buffer,
     pub size_elements: u64,
@@ -98,8 +101,28 @@ pub struct BigBufPack {
     pub read_only: BindGroup,
     pub read_write: BindGroup,
 }
+
+impl Debug for BigBufPack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+
+        #[derive(Debug)]
+        struct BufDebug {
+            size_elements: u64,
+            size_bytes: u64,
+        }
+
+        let s = BufDebug {
+            size_elements: self.size_elements,
+            size_bytes: self.size_bytes,
+        };
+
+        fmt::Debug::fmt(&s, f)
+    }
+}
+
 // big storage buffer
 pub struct BigBuffer<Data: Pod + Zeroable> {
+    pub max_buffer_size_elements: usize,
     data_type: PhantomData<Data>,
     // buffer and len
     buffers: Vec<BigBufPack>,
@@ -110,6 +133,7 @@ pub struct BigBuffer<Data: Pod + Zeroable> {
 impl<Data: Pod + Zeroable> BigBuffer<Data> {
     pub fn init_storage_with_data(device: &Device, data: &[Data]) -> Self {
         let max_size_bytes = device.limits().max_buffer_size as usize;
+        // let max_size_bytes = size_of::<Data>() * 100_000;
         let max_size_elements = max_size_bytes / size_of::<Data>();
 
         let mut buffers = vec![];
@@ -125,7 +149,7 @@ impl<Data: Pod + Zeroable> BigBuffer<Data> {
                 device.create_buffer_init(&BufferInitDescriptor {
                     label: None,
                     contents: bytemuck::cast_slice(&data[st..end]),
-                    usage: BufferUsages::STORAGE,
+                    usage: BufferUsages::STORAGE | BufferUsages::VERTEX,
                 }),
                 max_size_elements,
             ));
@@ -139,7 +163,7 @@ impl<Data: Pod + Zeroable> BigBuffer<Data> {
                 device.create_buffer_init(&BufferInitDescriptor {
                     label: None,
                     contents: bytemuck::cast_slice(&data[st..end]),
-                    usage: BufferUsages::STORAGE,
+                    usage: BufferUsages::STORAGE | BufferUsages::VERTEX,
                 }),
                 excess,
             ));
@@ -148,7 +172,8 @@ impl<Data: Pod + Zeroable> BigBuffer<Data> {
         let (bb, write, read) = Self::create_bind(buffers, device);
 
         Self {
-            data_type: PhantomData::default(),
+            max_buffer_size_elements: max_size_elements,
+            data_type: PhantomData,
             buffers: bb,
             read_only_layout: read,
             read_write_layout: write,
@@ -169,7 +194,7 @@ impl<Data: Pod + Zeroable> BigBuffer<Data> {
                 device.create_buffer(&BufferDescriptor {
                     label: None,
                     size: (max_size_elements * size_of::<Data>()) as u64,
-                    usage: BufferUsages::STORAGE,
+                    usage: BufferUsages::STORAGE | BufferUsages::VERTEX,
                     mapped_at_creation: false,
                 }),
                 max_size_elements,
@@ -181,7 +206,7 @@ impl<Data: Pod + Zeroable> BigBuffer<Data> {
                 device.create_buffer(&BufferDescriptor {
                     label: None,
                     size: (excess * size_of::<Data>()) as u64,
-                    usage: BufferUsages::STORAGE,
+                    usage: BufferUsages::STORAGE | BufferUsages::VERTEX,
                     mapped_at_creation: false,
                 }),
                 excess,
@@ -191,7 +216,8 @@ impl<Data: Pod + Zeroable> BigBuffer<Data> {
         let (bb, write, read) = Self::create_bind(buffers, device);
 
         Self {
-            data_type: PhantomData::default(),
+            max_buffer_size_elements: max_size_elements,
+            data_type: PhantomData,
             buffers: bb,
             read_only_layout: read,
             read_write_layout: write,
@@ -304,7 +330,7 @@ impl GpuTexture {
             binding: 0,
             visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
             ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                sample_type: wgpu::TextureSampleType::Float { filterable: is_sampler_filtering },
                 view_dimension: wgpu::TextureViewDimension::D2,
                 multisampled: false,
             },

@@ -8,7 +8,7 @@ mod wgpu_res;
 
 use std::sync::Arc;
 use eframe::egui_wgpu::{WgpuConfiguration, WgpuSetup, WgpuSetupCreateNew};
-use eframe::wgpu::{BackendOptions, Backends, ExperimentalFeatures, Features, InstanceDescriptor, InstanceFlags, Limits, MemoryBudgetThresholds, PowerPreference};
+use eframe::wgpu::{BackendOptions, Backends, ExperimentalFeatures, InstanceDescriptor, InstanceFlags, MemoryBudgetThresholds, PowerPreference};
 use eframe::wgpu::wgt::DeviceDescriptor;
 use crate::app::App;
 

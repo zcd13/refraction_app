@@ -1,8 +1,9 @@
 use std::f32::consts::PI;
 use eframe::wgpu;
-use eframe::wgpu::wgt::{SamplerDescriptor, TextureDescriptor};
+use eframe::wgpu::wgt::{PollType, SamplerDescriptor};
 use eframe::wgpu::{include_wgsl, BindGroup, BindGroupLayout, BlendComponent, BlendFactor, BlendOperation, BlendState, ColorTargetState, ColorWrites, CommandEncoder, Device, FragmentState, FrontFace, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPipeline, RenderPipelineDescriptor, Texture, TextureDimension, TextureFormat, TextureUsages, TextureView, VertexState};
 use std::sync::Arc;
+use std::time::Instant;
 use crate::wgpu_res::{BigBuffer, GpuTexture, LightRay};
 
 pub struct TestSceneRenderer {
@@ -165,18 +166,21 @@ pub struct Scene {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     current_size: (u32, u32),
-    render_texture_view: DisplayTexture,
+    display_texture: DisplayTexture,
 
     // target for drawing lines, format = float32x4, same size as render texture
     line_draw_texture: GpuTexture,
     line_render_pipeline: RenderPipeline,
 
     ray_buffer: BigBuffer<LightRay>,
+
+    last_frame_time: Instant,
+    pub current_fps: f32,
 }
 
 const INIT_SIZE: [u32; 2] = [500; 2];
 impl Scene {
-    pub fn init(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+    pub fn init(device: Arc<Device>, queue: Arc<wgpu::Queue>) -> Self {
         println!("Reached");
 
         let draw_texture = GpuTexture::new(
@@ -189,27 +193,33 @@ impl Scene {
             Some(SamplerDescriptor {
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
                 address_mode_v: wgpu::AddressMode::ClampToEdge,
-                mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Linear,
+                mag_filter: wgpu::FilterMode::Nearest,
+                min_filter: wgpu::FilterMode::Nearest,
                 ..Default::default()
             }),
             false,
         );
 
-        let debug_ray_count = 5000;
+        let debug_ray_count = 50_000_000;
         let mut data: Vec<LightRay> = Vec::with_capacity(debug_ray_count);
         for i in 0..debug_ray_count {
             let f = i as f32 / debug_ray_count as f32;
             let dir =  PI * 2.0 * f;
             let dir_v = [dir.cos(), dir.sin()];
+            let w = (700.0 - 380.0) * f + 380.0;
+
+            let x = (f - 0.5) * 2.0;
             data.push(LightRay {
-                position: [0.0; 2],
-                draw_last_position: [dir_v[0] * 100.0, dir_v[1] * 100.0],
-                wavelength: 650.0,
+                position: [x, -1.0],
+                draw_last_position: [x, 1.0],
+                // draw_last_position: [dir_v[0] * 100.0, dir_v[1] * 100.0],
+                wavelength: w,
                 strength: 1.0,
                 ray_status: 0,
+                _pad1: 0,
                 direction: [0.0; 2],
-                current_index_of_refraction: 0.0,
+                current_ior: 0.0,
+                _pad2: 0,
             })
         }
         let debug_rays = BigBuffer::init_storage_with_data(&device, &data);
@@ -228,7 +238,7 @@ impl Scene {
                 module: &shader_module,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[LightRay::desc()],
+                buffers: &[],
             },
             primitive: PrimitiveState {
                 topology: PrimitiveTopology::LineList,
@@ -236,7 +246,7 @@ impl Scene {
                 front_face: FrontFace::Ccw,
                 cull_mode: None,
                 unclipped_depth: false,
-                polygon_mode: PolygonMode::Line,
+                polygon_mode: PolygonMode::Fill,
                 conservative: false,
             },
             depth_stencil: None,
@@ -248,18 +258,19 @@ impl Scene {
                 targets: &[
                     Some(ColorTargetState {
                         format: TextureFormat::Rgba32Float,
-                        blend: Some(BlendState {
-                            color: BlendComponent {
-                                src_factor: BlendFactor::One,
-                                dst_factor: BlendFactor::One,
-                                operation: BlendOperation::Add,
-                            },
-                            alpha: BlendComponent {
-                                src_factor: BlendFactor::One,
-                                dst_factor: BlendFactor::One,
-                                operation: BlendOperation::Add,
-                            },
-                        }),
+                        blend: None,
+                        // blend: Some(BlendState {
+                        //     color: BlendComponent {
+                        //         src_factor: BlendFactor::One,
+                        //         dst_factor: BlendFactor::One,
+                        //         operation: BlendOperation::Add,
+                        //     },
+                        //     alpha: BlendComponent {
+                        //         src_factor: BlendFactor::One,
+                        //         dst_factor: BlendFactor::One,
+                        //         operation: BlendOperation::Add,
+                        //     },
+                        // }),
                         write_mask: ColorWrites::ALL,
                     })
                 ],
@@ -268,19 +279,23 @@ impl Scene {
             cache: None,
         });
 
+        let display_texture = DisplayTexture::new(&device, &draw_texture.bind_group_layout);
 
 
-        todo!()
-        // println!("Made");
-        // Self {
-        //     device,
-        //     queue,
-        //     current_size: (500, 500),
-        //     render_texture_view: texture_view,
-        //     line_draw_texture: draw_texture,
-        //     line_render_pipeline,
-        //     ray_buffer: debug_rays,
-        // }
+        println!("Made");
+        Self {
+            device,
+            queue,
+            current_size: (500, 500),
+            display_texture,
+            line_draw_texture: draw_texture,
+            line_render_pipeline,
+            ray_buffer: debug_rays,
+
+
+            last_frame_time: Instant::now(),
+            current_fps: 0.0,
+        }
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -293,46 +308,72 @@ impl Scene {
             return;
         }
 
-        self.render_texture_view.resize(width, height, &self.device);
+        self.display_texture.resize(width, height, &self.device);
         self.line_draw_texture.resize(&self.device, width, height);
     }
 
-    pub fn render(&self) -> Option<&wgpu::TextureView> {
-        // let view = self.render_texture_view.as_ref()?;
+    pub fn render(&mut self) -> Option<&TextureView> {
+        self.update_fps();
+
+        println!("{:.2} FPS {:?} buffs elements = {}", self.current_fps, self.ray_buffer.buffers(), self.ray_buffer.max_buffer_size_elements);
 
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        {
-            // 3. Begin the Render Pass
-            // let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            //     label: Some("Main Render Pass"),
-            //     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            //         view: &view,
-            //         depth_slice: None,
-            //         resolve_target: None,
-            //         ops: wgpu::Operations {
-            //             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-            //             store: wgpu::StoreOp::Store,
-            //         },
-            //     })],
-            //     depth_stencil_attachment: None,
-            //     ..Default::default()
-            // });
-            //
-            // // 4. Bind the pipeline and our storage data
-            // render_pass.set_pipeline(&self.pipeline);
-            //
-            // // This is where your 'vertex array' (storage buffer) enters the shader
-            // render_pass.set_bind_group(0, &self.poly_bind, &[]);
-            //
-            // // 5. Draw 3 vertices for the fullscreen triangle
-            // render_pass.draw(0..3, 0..1);
-        }
-        self.queue.submit(Some(encoder.finish()));
 
-        todo!()
-        // Some(view)
+        let tex_to_display = {
+
+            // draw lines
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Line Render Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.line_draw_texture.view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+
+
+                render_pass.set_pipeline(&self.line_render_pipeline);
+
+                for buffer in self.ray_buffer.buffers() {
+                    let num_rays = buffer.size_elements as u32;
+                    render_pass.set_bind_group(0, &buffer.read_only, &[]);
+                    render_pass.draw(0..2, 0..num_rays);
+                }
+
+            }
+
+            self.display_texture.render(&mut encoder, &self.line_draw_texture.bind_group)
+        };
+        let command_buffer = encoder.finish();
+        self.queue.submit(Some(command_buffer));
+        self.device.poll(PollType::Wait { submission_index: None, timeout: None }).unwrap();
+
+
+        Some(tex_to_display)
+    }
+
+    pub fn update_fps(&mut self) {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_frame_time).as_secs_f32();
+        self.last_frame_time = now;
+
+        // Apply a simple exponential moving average to smooth the number
+        // 0.1 means it takes ~10 frames to fully react to a speed change
+        if dt > 0.0 {
+            let instant_fps = 1.0 / dt;
+            self.current_fps = self.current_fps * 0.9 + instant_fps * 0.1;
+        }
     }
 }
 
@@ -343,15 +384,15 @@ struct DisplayTexture {
 }
 impl DisplayTexture {
     pub fn new(device: &Device, float_tex_bind_layout: &BindGroupLayout) -> Self {
-        let texture = Self::create_render_tex(INIT_SIZE[0], INIT_SIZE[1], &device);
-        let texture_view = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
+        let texture = Self::create_render_tex(INIT_SIZE[0], INIT_SIZE[1], device);
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let shader_module = device.create_shader_module(include_wgsl!("../shaders/display_to_srgb.wgsl"));
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Tone map Pipeline"),
             layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                bind_group_layouts: &[Some(&float_tex_bind_layout)],
+                bind_group_layouts: &[Some(float_tex_bind_layout)],
                 ..Default::default()
             })),
             vertex: wgpu::VertexState {
@@ -377,7 +418,10 @@ impl DisplayTexture {
             cache: None,
         });
 
-        todo!()
+        Self {
+            display_tex_view: texture_view,
+            pipeline,
+        }
     }
 
     pub fn create_render_tex(w: u32, h: u32, device: &Device) -> Texture {
@@ -398,11 +442,11 @@ impl DisplayTexture {
     }
 
     pub fn resize(&mut self, w: u32, h: u32, device: &Device) {
-        let texture = Self::create_render_tex(w, h, &device);
+        let texture = Self::create_render_tex(w, h, device);
         self.display_tex_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     }
 
-    pub fn render(&mut self, encoder: &mut CommandEncoder, float_tex_bind: &BindGroup) -> &TextureView {
+    pub fn render(&self, encoder: &mut CommandEncoder, float_tex_bind: &BindGroup) -> &TextureView {
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &self.display_tex_view, // The 8-bit target
