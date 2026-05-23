@@ -14,18 +14,21 @@ enum State {
 
 pub struct App {
     state: State,
+    mouse_pos: (f32, f32),
 }
 
 impl App {
     pub fn new(event_loop: &EventLoop<Graphics>) -> Self {
         Self {
             state: State::Init(Some(event_loop.create_proxy())),
+            mouse_pos: (0.0, 0.0),
         }
     }
 
     fn draw(&mut self) {
         if let State::Ready(gfx) = &mut self.state {
             gfx.draw();
+            gfx.request_redraw();
         }
     }
 
@@ -84,7 +87,14 @@ impl ApplicationHandler<Graphics> for App {
             WindowEvent::Resized(size) => self.resized(size),
             WindowEvent::RedrawRequested => self.draw(),
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse_pos = (position.x as f32, position.y as f32);
+            }
             _ => {}
+        };
+
+        if let State::Ready(g) = &mut self.state {
+            g.mouse_pos = self.mouse_pos;
         }
     }
 }

@@ -1,14 +1,8 @@
 #![allow(dead_code)]
 
-use std::borrow::Cow;
-
-use wgpu::{
-    Adapter, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features, FragmentState,
-    Instance, Limits, LoadOp, MemoryHints, Operations, PowerPreference, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, StoreOp, Surface,
-    SurfaceConfiguration, TextureFormat, TextureViewDescriptor, VertexState,
-};
+use std::time::{Duration, Instant};
+use wgpu::{Adapter, CurrentSurfaceTexture, Device, DeviceDescriptor, Features, Instance, Limits, MemoryHints, PowerPreference, PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureViewDescriptor};
+use wgpu::hal::DynQueue;
 use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy, window::Window};
 use crate::the_code::StartupInfo;
 use crate::the_code::wgpu_app::WgpuApplication;
@@ -24,7 +18,7 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
     let surface = instance.create_surface(Rc::clone(&window)).unwrap();
     let adapter = instance
         .request_adapter(&RequestAdapterOptions {
-            power_preference: PowerPreference::default(), // Power preference for the device
+            power_preference: PowerPreference::HighPerformance, // Power preference for the device
             force_fallback_adapter: false, // Indicates that only a fallback ("software") adapter can be used
             compatible_surface: Some(&surface), // Guarantee that the adapter can render to this surface
         })
@@ -35,7 +29,8 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
         .request_device(&DeviceDescriptor {
             label: None,
             required_features: Features::empty(), // Specifies the required features by the device request. Fails if the adapter can't provide them.
-            required_limits: Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()),
+            // todo set min limits for the project
+            required_limits: adapter.limits(),
             memory_hints: MemoryHints::Performance,
             trace: Default::default(),
             experimental_features: Default::default(),
@@ -48,7 +43,10 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
     // Make the dimensions at least size 1, otherwise wgpu would panic
     let width = size.width.max(1);
     let height = size.height.max(1);
-    let surface_config = surface.get_default_config(&adapter, width, height).unwrap();
+    let mut surface_config = surface
+        .get_default_config(&adapter, width, height).unwrap();
+    surface_config.present_mode = PresentMode::Immediate;
+
 
     surface.configure(&device, &surface_config);
 
@@ -66,12 +64,14 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
         device,
         queue,
         wgpu_application,
+        fps_counter: FpsCounter::new(Duration::from_secs(1)),
+        mouse_pos: (0.0, 0.0),
     };
 
     let _ = proxy.send_event(gfx);
 }
 
-#[derive(Debug)]
+
 pub struct Graphics {
     window: Rc<Window>,
     instance: Instance,
@@ -81,6 +81,8 @@ pub struct Graphics {
     device: Device,
     queue: Queue,
     wgpu_application: WgpuApplication,
+    fps_counter: FpsCounter,
+    pub mouse_pos: (f32, f32),
 }
 
 impl Graphics {
@@ -96,17 +98,59 @@ impl Graphics {
     }
 
     pub fn draw(&mut self) {
-        self.wgpu_application.update();
+        self.wgpu_application.update(self.mouse_pos);
 
         let frame = self
             .surface
-            .get_current_texture()
-            .expect("Failed to acquire next swap chain texture.");
+            .get_current_texture();
 
-        let view = frame.texture.create_view(&TextureViewDescriptor::default());
 
-        self.wgpu_application.render(&view);
+        match frame {
+            CurrentSurfaceTexture::Success(tex) => {
+                let view = tex.texture.create_view(&TextureViewDescriptor::default());
+                self.wgpu_application.render(&view);
+                tex.present();
+                self.fps_counter.update();
+            },
+            _ => panic!("Surface texture failure"),
+        };
+    }
+}
 
-        frame.present();
+
+
+
+pub struct FpsCounter {
+    print_interval: Duration,
+    last_print_time: Instant,
+    frame_count: u32,
+}
+impl FpsCounter {
+    /// Creates and starts the FPS counter
+    pub fn new(print_interval: Duration) -> Self {
+        Self {
+            print_interval,
+            last_print_time: Instant::now(),
+            frame_count: 0,
+        }
+    }
+
+    /// Call this once per frame.
+    /// It automatically prints and resets when the interval is reached.
+    pub fn update(&mut self) {
+        self.frame_count += 1;
+
+        let elapsed = self.last_print_time.elapsed();
+
+        if elapsed >= self.print_interval {
+            // Calculate frames per second
+            let fps = self.frame_count as f64 / elapsed.as_secs_f64();
+
+            println!("FPS: {:.2}", fps);
+
+            // Reset the counter and timer for the next batch
+            self.frame_count = 0;
+            self.last_print_time = Instant::now();
+        }
     }
 }
