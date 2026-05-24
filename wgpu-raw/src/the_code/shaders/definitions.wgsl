@@ -12,6 +12,8 @@ struct Settings {
    height: u32,
    aspect: f32,        // was commented padding
    mouse_pos: vec2<f32>,
+   do_ray_jobs: u32,
+   _padding: u32,
 };
 
 
@@ -39,3 +41,30 @@ fn get_random(timestamp: f32, id: u32) -> f32 {
     return f32(hashed_val) / 4294967295.0;
 }
 
+
+const FIRST_HALF: u32 = 0xFFFFu;
+const LOWER_CONS: f32 = 355.0;
+const UPPER_CONS: f32 = 775.0;
+
+fn packed_to_float(pack: u32) -> f32 {
+    let half = pack & FIRST_HALF;
+    let float = f32(half) / 65535.0;
+    return float;
+};
+
+fn packed_to_wavelength(pack: u32) -> f32 {
+    let float = packed_to_float(pack);
+    return ((UPPER_CONS - LOWER_CONS) * float) + LOWER_CONS;
+}
+
+fn float_to_packed(float: f32) -> u32 {
+    return u32(65535.0 * float) & FIRST_HALF;
+}
+
+
+
+const SOFTNESS: f32 = 0.1; // Higher = weaker rays lose almost no energy
+fn new_strength(strength: f32, factor: f32) -> f32 {
+    let adjustment = pow(strength, SOFTNESS);
+    return strength * pow(factor, adjustment);
+}

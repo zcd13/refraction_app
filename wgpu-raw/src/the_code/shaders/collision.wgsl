@@ -1,13 +1,14 @@
 const INF: f32 = 3.402823466e+38f;
 
-const vertices_array = array(
-    vec2<f32>( 0.0,    0.5),   // Top
-    vec2<f32>( 0.0,   -0.5),   // Bottom
+const VERT_ARRAY = array(
+vec2<f32>( 0.0,    0.5),   // Top
     vec2<f32>( 0.3,    0.25),  // Top Right
     vec2<f32>( 0.3,   -0.25),  // Bottom Right
-    vec2<f32>(-0.3,    0.25),  // Top Left
+    vec2<f32>( 0.0,   -0.5),   // Bottom
     vec2<f32>(-0.3,   -0.25),  // Bottom Left
+    vec2<f32>(-0.3,    0.25),  // Top Left
 );
+const VERT_LEN: u32 = 6;
 
 /*
 
@@ -19,17 +20,14 @@ struct Collision {
     collision_normal: vec2<f32>,
     walls_collided: u32,
 }
-fn collide(start: u32, length: u32, ro: vec2<f32>, rd: vec2<f32>) -> Collision {
+fn collide(ro: vec2<f32>, rd: vec2<f32>) -> Collision {
     var hit_dist: f32 = INF;
     var num_inter: u32 = 0;
     var normal = vec2(0.0);
 
-    for (var i: u32 = 0; i < length; i += 1) {
-        let a_raw = vertices_array[start + i];
-        let b_raw = vertices_array[start + ((i + 1) % length)];
-        // Scale x by aspect so vertices live in the same world space as rays
-        let a = vec2(a_raw.x * settings.aspect, a_raw.y);
-        let b = vec2(b_raw.x * settings.aspect, b_raw.y);
+    for (var i: u32 = 0; i < VERT_LEN; i += 1) {
+        let a = VERT_ARRAY[i];
+        let b = VERT_ARRAY[(i + 1) % VERT_LEN];
 
         let v = b - a;
         let w = ro - a;

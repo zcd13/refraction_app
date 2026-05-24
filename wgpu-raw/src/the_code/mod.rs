@@ -2,6 +2,7 @@ use wgpu::TextureFormat;
 
 pub mod wgpu_app;
 mod geometry;
+mod texture;
 
 pub struct StartupInfo {
     pub display_tex_format: TextureFormat,

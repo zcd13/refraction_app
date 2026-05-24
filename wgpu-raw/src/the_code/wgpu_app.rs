@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
 
 use crate::the_code::wgpu_app::sample_render::TextureSamplerRenderer;
-use crate::the_code::wgpu_app::texture::{GpuTexture, GpuTextureBuilder, HasSampler};
 use crate::the_code::StartupInfo;
 use bytemuck::{bytes_of, cast, cast_slice, Pod, Zeroable};
 use glam::{vec2, Vec2};
@@ -10,17 +9,9 @@ use std::f32::consts::PI;
 use std::marker::PhantomData;
 use std::time::Instant;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::wgt::{PollType, SamplerDescriptor};
-use wgpu::{
-    include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendComponent, BlendFactor,
-    BlendOperation, BlendState, Buffer, BufferBindingType, BufferUsages, Color, ColorTargetState,
-    ColorWrites, CommandEncoder, ComputePipeline, ComputePipelineDescriptor, Device, FilterMode,
-    FragmentState, FrontFace, LoadOpDontCare, MultisampleState, PipelineLayoutDescriptor,
-    PolygonMode, PrimitiveState, PrimitiveTopology, Queue, RenderPipeline,
-    RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages,
-    TextureFormat, TextureUsages, TextureView, VertexState,
-};
+use wgpu::wgt::{BufferDescriptor, PollType, SamplerDescriptor};
+use wgpu::{include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendComponent, BlendFactor, BlendOperation, BlendState, Buffer, BufferAddress, BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites, CommandEncoder, ComputePipeline, ComputePipelineDescriptor, Device, FilterMode, FragmentState, FrontFace, LoadOpDontCare, MultisampleState, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureFormat, TextureUsages, TextureView, VertexState};
+use crate::the_code::texture::{GpuTexture, GpuTextureBuilder, HasSampler};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -52,55 +43,13 @@ pub struct Settings {
     pub height: u32,
     pub aspect: f32, // replaces _padding1, same offset (12)
     pub mouse_pos_clip: [f32; 2],
-    pub _padding2: [u32; 2],
+    pub do_ray_jobs: u32,
+    pub _padding: u32,
 }
 
-fn init_rays(mp: [f32; 2]) -> Vec<LightRay> {
-    let debug_ray_count = 8000;
 
-    // println!(
-    //     "Ray buffer size = {} with {debug_ray_count} rays",
-    //     format_bytes(debug_ray_count * size_of::<LightRay>())
-    // );
-
-    let mut data: Vec<LightRay> = Vec::with_capacity(debug_ray_count);
-    for i in 0..debug_ray_count {
-        let f = i as f32 / debug_ray_count as f32;
-        let x = (f - 0.5) * 2.0;
-
-        let v_mp = Vec2::from(mp);
-        let v_p = Vec2::new(-1.0, 0.5);
-        let dir_t = (v_mp - v_p).normalize();
-
-        let mut dir_rad = dir_t.x.atan2(dir_t.y);
-        dir_rad += x * 0.2;
-        let dir_t = vec2(dir_rad.sin(), dir_rad.cos());
-
-        let left = Vec2::new(-dir_t.y, dir_t.x);
-        let right = Vec2::new(dir_t.y, -dir_t.x);
-        let diff = left - right;
-        let aj = (diff * 0.0005) * x;
-
-        let np = v_p + aj;
-
-        // println!("{dir_v:?}");
-
-        let cf: f32 = rng().random_range(0.0..1.0);
-        let w = (700.0 - 380.0) * cf + 380.0;
-
-
-        data.push(LightRay {
-            pos: np.into(),
-            last_pos: [0.0; 2],
-            dir: dir_t.into(),
-            strength: 0.1,
-            wave_length_and_ior: LightRay::u16_wave(w) as u32,
-            // wavelength: LightRay::u16_wave(650.0),
-            // current_ior_index: 0,
-        })
-    }
-    data
-}
+const RAY_COUNT: usize = 15_000_000;
+const ITERATIONS: usize = 32;
 
 pub struct WgpuApplication {
     device: Device,
@@ -121,20 +70,18 @@ pub struct WgpuApplication {
 }
 impl WgpuApplication {
     pub fn init(startup_info: StartupInfo, device: Device, queue: Queue) -> Self {
-        let data = init_rays([1.0, 0.0]);
-
-        let light_ray_buffer = SimpleBuffer::init_with(&data, &device);
+        let light_ray_buffer = SimpleBuffer::init(&device, RAY_COUNT);
 
         let line_texture = GpuTextureBuilder::new(
             &device,
-            (2000, 2000),
+            startup_info.display_size,
             TextureFormat::Rgba16Float,
             TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
         )
         .with_sampler(
             SamplerDescriptor {
-                mag_filter: FilterMode::Linear,
-                min_filter: FilterMode::Linear,
+                mag_filter: FilterMode::Nearest,
+                min_filter: FilterMode::Nearest,
                 ..Default::default()
             },
             true,
@@ -150,7 +97,8 @@ impl WgpuApplication {
                 height: startup_info.display_size.1,
                 aspect: startup_info.display_size.0 as f32 / startup_info.display_size.1 as f32,
                 mouse_pos_clip: [0.0; 2],
-                _padding2: [0; 2],
+                do_ray_jobs: 1,
+                _padding: 0,
             },
         );
 
@@ -199,12 +147,9 @@ impl WgpuApplication {
         let aspect = self.screen_size.0 as f32 / self.screen_size.1 as f32;
         let mp_world = (mp.0 * aspect, mp.1);
 
-        let data = init_rays([mp_world.0, mp_world.1]);
-        self.light_ray_buffer = SimpleBuffer::init_with(&data, &self.device);
-
         self.settings_uniform.edit(&self.queue, |s| {
             s.timestamp = self.start_instant.elapsed().as_secs_f32();
-            s.mouse_pos_clip = [mp.0, mp.1];
+            s.mouse_pos_clip = [mp_world.0, mp_world.1];
         });
     }
 
@@ -234,19 +179,22 @@ impl WgpuApplication {
                 });
             }
 
-            for _ in 0..32 {
-                self.line_physics_compute_pass.compute_pass(
-                    &mut encoder,
-                    &self.light_ray_buffer,
-                    &self.settings_uniform,
-                );
-                self.line_primitive_renderer.render(
-                    &mut encoder,
-                    &self.line_texture.view,
-                    &self.light_ray_buffer,
-                    &self.settings_uniform,
-                );
+            self.line_physics_compute_pass.init_pass(&mut encoder, &self.light_ray_buffer, &self.settings_uniform);
+
+
+            for _ in 0..ITERATIONS {
+                self.line_physics_compute_pass.compute_pass(&mut encoder, &self.light_ray_buffer, &self.settings_uniform);
+
+                self.line_primitive_renderer.render_lines(&mut encoder, &self.line_texture.view, &self.light_ray_buffer, &self.settings_uniform);
             }
+
+
+
+            self.line_primitive_renderer.render_geometry(
+                &mut encoder,
+                &self.line_texture.view,
+                &self.settings_uniform,
+            );
 
             self.display_pipeline
                 .render(&mut encoder, view, &self.line_texture);
@@ -279,7 +227,7 @@ impl<T: Pod + Zeroable> SimpleBuffer<T> {
         let size_bytes = size_of::<T>() * data.len();
         let buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
-            contents: bytemuck::cast_slice(data),
+            contents: cast_slice(data),
             usage: BufferUsages::STORAGE | BufferUsages::VERTEX,
         });
 
@@ -298,6 +246,28 @@ impl<T: Pod + Zeroable> SimpleBuffer<T> {
         }
     }
 
+    pub fn init(device: &Device, size: usize) -> Self {
+        let buffer = device.create_buffer(&BufferDescriptor {
+            label: None,
+            size: size as u64,
+            usage: BufferUsages::VERTEX | BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
+        let (read_write_layout, read_only_layout, read_write, read_only) =
+            Self::layouts(device, &buffer);
+
+        Self {
+            data_type: Default::default(),
+            buffer,
+            size_elements: size as u32,
+            size_bytes: (size * size_of::<T>()) as u32,
+            read_only_layout,
+            read_write_layout,
+            read_only,
+            read_write,
+        }
+    }
     pub fn layouts(
         device: &Device,
         buffer: &Buffer,
@@ -404,7 +374,9 @@ impl<T: Pod + Zeroable> SimpleUniform<T> {
 }
 
 pub struct LinePrimitiveRenderer {
-    pipeline: RenderPipeline,
+    ray_pipeline: RenderPipeline,
+
+    geometry_pipeline: RenderPipeline,
 }
 impl LinePrimitiveRenderer {
     pub fn init(
@@ -413,7 +385,7 @@ impl LinePrimitiveRenderer {
         output_format: TextureFormat,
         settings_uniform: &SimpleUniform<Settings>,
     ) -> Self {
-        let shader_module = combine(
+        let line_shader_module = combine(
             &device,
             &[
                 include_str!("shaders/draw_lines.wgsl"),
@@ -435,7 +407,7 @@ impl LinePrimitiveRenderer {
             label: Some("line_render_pipeline"),
             layout: Some(&line_render_pipeline_layout),
             vertex: VertexState {
-                module: &shader_module,
+                module: &line_shader_module,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
                 buffers: &[],
@@ -456,7 +428,7 @@ impl LinePrimitiveRenderer {
                 alpha_to_coverage_enabled: false,
             },
             fragment: Some(FragmentState {
-                module: &shader_module,
+                module: &line_shader_module,
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(ColorTargetState {
@@ -477,12 +449,78 @@ impl LinePrimitiveRenderer {
             cache: None,
         });
 
+        let geo_shader_module = combine(
+            &device,
+            &[
+                include_str!("shaders/draw_geometry.wgsl"),
+                include_str!("shaders/definitions.wgsl"),
+                include_str!("shaders/collision.wgsl"),
+            ],
+        );
+
+        let geometry_layout =
+            device.create_pipeline_layout(&PipelineLayoutDescriptor {
+                label: Some("geometry_layout"),
+                bind_group_layouts: &[
+                    Some(&settings_uniform.bind_group_layout),
+                ],
+                immediate_size: 0,
+            });
+
+        let geometry_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("line_render_pipeline"),
+            layout: Some(&geometry_layout),
+            vertex: VertexState {
+                module: &geo_shader_module,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::LineStrip,
+                strip_index_format: None,
+                front_face: FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(FragmentState {
+                module: &geo_shader_module,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(ColorTargetState {
+                    format: output_format,
+                    // blend: None,
+                    blend: Some(BlendState {
+                        color: BlendComponent {
+                            src_factor: BlendFactor::One,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                        alpha: BlendComponent::REPLACE,
+                    }),
+                    write_mask: ColorWrites::COLOR,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+
+
         Self {
-            pipeline: line_render_pipeline,
+            ray_pipeline: line_render_pipeline,
+            geometry_pipeline,
         }
     }
 
-    pub fn render(
+    pub fn render_lines(
         &self,
         encoder: &mut CommandEncoder,
         output_view: &TextureView,
@@ -506,11 +544,40 @@ impl LinePrimitiveRenderer {
             multiview_mask: None,
         });
 
-        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_pipeline(&self.ray_pipeline);
 
         render_pass.set_bind_group(0, &ray_buffer.read_only, &[]);
         render_pass.set_bind_group(1, &settings_uniform.bind_group, &[]);
         render_pass.draw(0..2, 0..ray_buffer.size_elements);
+    }
+
+
+    pub fn render_geometry(
+        &self,
+        encoder: &mut CommandEncoder,
+        output_view: &TextureView,
+        settings_uniform: &SimpleUniform<Settings>,
+    ) {
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Line Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: output_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+
+        render_pass.set_pipeline(&self.geometry_pipeline);
+        render_pass.set_bind_group(0, &settings_uniform.bind_group, &[]);
+        render_pass.draw(0..10, 0..1);
     }
 }
 
@@ -551,6 +618,7 @@ fn mouse_to_clip(mouse_pos: (f32, f32), screen_size: (u32, u32)) -> (f32, f32) {
 
 pub struct LinePhysicsComputePass {
     compute_pipeline: ComputePipeline,
+    init_pipeline: ComputePipeline,
 }
 impl LinePhysicsComputePass {
     pub fn init(
@@ -585,7 +653,25 @@ impl LinePhysicsComputePass {
             cache: None,
         });
 
-        Self { compute_pipeline }
+        let init_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("Compute Pipeline Layout"),
+            bind_group_layouts: &[
+                Some(&light_ray_buffer.read_write_layout),
+                Some(&settings_uniform.bind_group_layout),
+            ],
+            immediate_size: 0,
+        });
+
+        let init_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            label: Some("Compute Pipeline"),
+            layout: Some(&pipeline_layout),
+            module: &shader_module,
+            entry_point: Some("init"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        Self { compute_pipeline, init_pipeline }
     }
 
     pub fn compute_pass(
@@ -608,282 +694,33 @@ impl LinePhysicsComputePass {
         let workgroup_count = (total_elements + workgroup_size - 1) / workgroup_size;
         compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
     }
-}
 
-pub mod texture {
-    pub struct NoSampler;
-    pub struct HasSampler {
-        pub sampler: wgpu::Sampler,
-        pub is_filtering: bool,
-    }
-
-    // Typestate markers for the builder
-    pub struct BuilderNoSampler;
-    pub struct BuilderHasSampler<'a> {
-        pub desc: wgpu::SamplerDescriptor<'a>,
-        pub is_filtering: bool,
-    }
-
-    pub struct GpuTexture<S> {
-        pub texture: wgpu::Texture,
-        pub view: wgpu::TextureView,
-        pub sampler_state: S, // This will be either NoSampler or HasSampler
-        pub bind_group_layout: wgpu::BindGroupLayout,
-        pub bind_group: wgpu::BindGroup,
-        pub format: wgpu::TextureFormat,
-        pub usage: wgpu::TextureUsages,
-    }
-
-    pub struct GpuTextureBuilder<'a, S> {
-        device: &'a wgpu::Device,
-        width: u32,
-        height: u32,
-        format: wgpu::TextureFormat,
-        usage: wgpu::TextureUsages,
-        label: &'a str,
-        sampler_info: S,
-    }
-
-    impl<'a> GpuTextureBuilder<'a, BuilderNoSampler> {
-        /// Start building a new texture. Defaults to NoSampler.
-        pub fn new(
-            device: &'a wgpu::Device,
-            wh: (u32, u32),
-            format: wgpu::TextureFormat,
-            usage: wgpu::TextureUsages,
-        ) -> Self {
-            Self {
-                device,
-                width: wh.0,
-                height: wh.1,
-                format,
-                usage,
-                label: "gpu_texture",
-                sampler_info: BuilderNoSampler,
-            }
-        }
-
-        pub fn with_label(mut self, label: &'a str) -> Self {
-            self.label = label;
-            self
-        }
-
-        /// Consumes the current builder and returns a NEW builder with the HasSampler type.
-        pub fn with_sampler(
-            self,
-            desc: wgpu::SamplerDescriptor<'a>,
-            is_filtering: bool,
-        ) -> GpuTextureBuilder<'a, BuilderHasSampler<'a>> {
-            GpuTextureBuilder {
-                device: self.device,
-                width: self.width,
-                height: self.height,
-                format: self.format,
-                usage: self.usage,
-                label: self.label,
-                sampler_info: BuilderHasSampler { desc, is_filtering },
-            }
-        }
-
-        /// Builds a texture WITHOUT a sampler
-        pub fn make(self) -> GpuTexture<NoSampler> {
-            let bind_group_layout =
-                self.device
-                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                        label: Some(&format!("{}_layout", self.label)),
-                        entries: &[wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::FRAGMENT | wgpu::ShaderStages::COMPUTE,
-                            ty: wgpu::BindingType::Texture {
-                                sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                multisampled: false,
-                            },
-                            count: None,
-                        }],
-                    });
-
-            let (texture, view, bind_group) = create_resources(
-                self.device,
-                &bind_group_layout,
-                None,
-                self.width,
-                self.height,
-                self.format,
-                self.usage,
-                self.label,
-            );
-
-            GpuTexture {
-                texture,
-                view,
-                bind_group_layout,
-                bind_group,
-                format: self.format,
-                usage: self.usage,
-                sampler_state: NoSampler,
-            }
-        }
-    }
-
-    impl<'a> GpuTextureBuilder<'a, BuilderHasSampler<'a>> {
-        pub fn with_label(mut self, label: &'a str) -> Self {
-            self.label = label;
-            self
-        }
-
-        /// Builds a texture WITH a sampler
-        pub fn make(self) -> GpuTexture<HasSampler> {
-            let sampler = self.device.create_sampler(&self.sampler_info.desc);
-
-            let bind_group_layout =
-                self.device
-                    .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                        label: Some(&format!("{}_layout", self.label)),
-                        entries: &[
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: wgpu::ShaderStages::FRAGMENT
-                                    | wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Texture {
-                                    sample_type: wgpu::TextureSampleType::Float {
-                                        filterable: self.sampler_info.is_filtering,
-                                    },
-                                    view_dimension: wgpu::TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            },
-                            wgpu::BindGroupLayoutEntry {
-                                binding: 1,
-                                visibility: wgpu::ShaderStages::FRAGMENT
-                                    | wgpu::ShaderStages::COMPUTE,
-                                ty: wgpu::BindingType::Sampler(if self.sampler_info.is_filtering {
-                                    wgpu::SamplerBindingType::Filtering
-                                } else {
-                                    wgpu::SamplerBindingType::NonFiltering
-                                }),
-                                count: None,
-                            },
-                        ],
-                    });
-
-            let (texture, view, bind_group) = create_resources(
-                self.device,
-                &bind_group_layout,
-                Some(&sampler),
-                self.width,
-                self.height,
-                self.format,
-                self.usage,
-                self.label,
-            );
-
-            GpuTexture {
-                texture,
-                view,
-                bind_group_layout,
-                bind_group,
-                format: self.format,
-                usage: self.usage,
-                sampler_state: HasSampler {
-                    sampler,
-                    is_filtering: self.sampler_info.is_filtering,
-                },
-            }
-        }
-    }
-
-    // Shared internal function
-    fn create_resources(
-        device: &wgpu::Device,
-        layout: &wgpu::BindGroupLayout,
-        sampler: Option<&wgpu::Sampler>,
-        width: u32,
-        height: u32,
-        format: wgpu::TextureFormat,
-        usage: wgpu::TextureUsages,
-        label: &str,
-    ) -> (wgpu::Texture, wgpu::TextureView, wgpu::BindGroup) {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
+    pub fn init_pass(
+        &self,
+        encoder: &mut CommandEncoder,
+        light_ray_buffer: &SimpleBuffer<LightRay>,
+        settings_uniform: &SimpleUniform<Settings>,
+    ) {
+        let mut compute_pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some("Init Pass"),
+            timestamp_writes: None,
         });
 
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        compute_pass.set_pipeline(&self.init_pipeline);
+        compute_pass.set_bind_group(0, &light_ray_buffer.read_write, &[]);
+        compute_pass.set_bind_group(1, &settings_uniform.bind_group, &[]);
 
-        let mut entries = vec![wgpu::BindGroupEntry {
-            binding: 0,
-            resource: wgpu::BindingResource::TextureView(&view),
-        }];
-
-        if let Some(s) = sampler {
-            entries.push(wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(s),
-            });
-        }
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout,
-            entries: &entries,
-            label: Some(&format!("{}_bind_group", label)),
-        });
-
-        (texture, view, bind_group)
-    }
-
-    // Type-safe resizing
-    impl GpuTexture<NoSampler> {
-        pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
-            let (t, v, bg) = create_resources(
-                device,
-                &self.bind_group_layout,
-                None,
-                width,
-                height,
-                self.format,
-                self.usage,
-                "resized",
-            );
-            self.texture = t;
-            self.view = v;
-            self.bind_group = bg;
-        }
-    }
-
-    impl GpuTexture<HasSampler> {
-        pub fn resize(&mut self, device: &wgpu::Device, wh: (u32, u32)) {
-            let (t, v, bg) = create_resources(
-                device,
-                &self.bind_group_layout,
-                Some(&self.sampler_state.sampler),
-                wh.0,
-                wh.1,
-                self.format,
-                self.usage,
-                "resized",
-            );
-            self.texture = t;
-            self.view = v;
-            self.bind_group = bg;
-        }
+        let workgroup_size = 256;
+        let total_elements = light_ray_buffer.size_elements;
+        let workgroup_count = (total_elements + workgroup_size - 1) / workgroup_size;
+        compute_pass.dispatch_workgroups(workgroup_count, 1, 1);
     }
 }
+
 
 pub mod sample_render {
-    use crate::the_code::wgpu_app::texture::{GpuTexture, HasSampler};
     use wgpu::*;
+    use crate::the_code::texture::{GpuTexture, HasSampler};
 
     pub struct TextureSamplerRenderer {
         pipeline: RenderPipeline,

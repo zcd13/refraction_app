@@ -27,8 +27,9 @@ fn vs_main(
     var out: VertexOutput;
     out.clip_pos = vec4<f32>(world_pos, 0.0, 1.0);
 
-    let wavelength = ray.wave_length_and_ior & 0xFFFFu;
-    let float_wave = (f32(wavelength) / 65535.0) * 350.0 + 350.0;
+//    let wavelength = ray.wave_length_and_ior & 0xFFFFu;
+//    let float_wave = (f32(wavelength) / 65535.0) * 350.0 + 350.0;
+    let float_wave = packed_to_wavelength(ray.wave_length_and_ior);
 
     // Simple wavelength to RGB (placeholder logic)
     out.color = vec4<f32>(wavelength_to_rgb(float_wave) * abs(ray.strength), 1.0);
