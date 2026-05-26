@@ -7,15 +7,26 @@ struct LightRay {
 };
 
 struct Settings {
-   timestamp: f32,
-   width: u32,
-   height: u32,
-   aspect: f32,        // was commented padding
-   mouse_pos: vec2<f32>,
-   do_ray_jobs: u32,
-   _padding: u32,
+    timestamp: f32,
+    aspect: f32,
+    mouse_pos_clip: vec2<f32>,
+    ray_count: u32,
+    total_light: f32,
+    a_factor: f32,
+    b_factor: f32,
+    brightness_scale: f32,
+    spread: f32,
+    width: f32,
+    light_dir: f32, //
+    light_pos: vec2<f32>,
+//    padding_2: f32,
 };
 
+struct VertexBuffer {
+    length: u32,
+    padding: u32,
+    vertices: array<vec2<f32>>,
+}
 
 fn hash_u32(x: u32) -> u32 {
     var s = x;
@@ -63,8 +74,7 @@ fn float_to_packed(float: f32) -> u32 {
 
 
 
-const SOFTNESS: f32 = 0.1; // Higher = weaker rays lose almost no energy
 fn new_strength(strength: f32, factor: f32) -> f32 {
-    let adjustment = pow(strength, SOFTNESS);
+    let adjustment = pow(strength, settings.brightness_scale);
     return strength * pow(factor, adjustment);
 }

@@ -21,8 +21,7 @@ fn vs_main(
     let check: f32 = f32(ray.strength == 0.0);
     world_pos = mix(world_pos, vec2(1000.0, 1000.0), check);
 
-    let aspect = f32(settings.width) / f32(settings.height);
-    world_pos.x /= aspect;
+    world_pos.x /= settings.aspect;
 
     var out: VertexOutput;
     out.clip_pos = vec4<f32>(world_pos, 0.0, 1.0);

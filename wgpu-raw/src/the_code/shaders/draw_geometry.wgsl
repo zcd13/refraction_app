@@ -16,8 +16,7 @@ fn vs_main(
     var pos = VERT_ARRAY[v_idx % VERT_LEN];
 
     // draw geometry
-    let aspect = f32(settings.width) / f32(settings.height);
-    pos.x /= aspect;
+    pos.x /= settings.aspect;
 
     out.clip_pos = vec4<f32>(pos, 0.0, 1.0);
     out.color = vec4<f32>(1.0);

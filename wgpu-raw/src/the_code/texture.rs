@@ -267,3 +267,4 @@ impl GpuTexture<HasSampler> {
         self.bind_group = bg;
     }
 }
+

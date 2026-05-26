@@ -80,7 +80,6 @@ fn do_reflect_refract(
     let ratio: f32 = n1 / n2;
     let c1 = -dot(normal, dir);
 
-    // FIX 3: Replaced pow(x, 2) with x * x. It is faster and avoids WGSL type errors.
     let radicand = 1.0 - (ratio * ratio) * (1.0 - (c1 * c1));
 
     if radicand >= 0.0 {
@@ -97,10 +96,9 @@ fn do_reflect_refract(
 
         let rle_fact = (rs_reflectance + rp_reflectance) / 2.0;
 
-        // Ensure we return the normalized vector just to be safe from floating point drift
         return ReRfCalc(normalize(rle), normalize(rac), rle_fact);
     } else {
-        // Total Internal Reflection
+        // TIR
         let reflect = dir + 2.0 * c1 * normal;
         return ReRfCalc(normalize(reflect), vec2(0.0), 1.0);
     }

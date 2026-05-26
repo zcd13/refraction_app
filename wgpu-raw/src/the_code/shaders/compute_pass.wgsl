@@ -23,7 +23,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         data[index].last_pos = data[index].pos;
 
         let float_wave = packed_to_wavelength(data[index].wave_length_and_ior);
-        let ior_glass = get_ior(float_wave, 1.517 * 0.5, 0.0042 * 3.0);
+        let ior_glass = get_ior(float_wave, settings.a_factor, settings.b_factor);
 
         var n1: f32 = 1.0;       // Default Air
         var n2: f32 = ior_glass; // Default Glass
@@ -68,26 +68,27 @@ fn init(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let random = get_random(settings.timestamp, index);
     let x = (random - 0.5) * 2.0;
 
-    let zero_pos = vec2<f32>(-1.0, 0.0);
-    let mp = settings.mouse_pos;
+    let zero_pos = settings.light_pos;
 
+    let mp = settings.mouse_pos_clip;
     let dir_to_mouse = normalize(mp - zero_pos);
+//    let dir_to_mouse = vec2<f32>(cos(settings.light_dir), sin(settings.light_dir));
 
     let left = vec2<f32>(-dir_to_mouse.y, dir_to_mouse.x);
     let right = vec2<f32>(dir_to_mouse.y, -dir_to_mouse.x);
     let diff = left - right;
-    let aj = (diff * WIDTH) * x;
+    let aj = (diff * settings.width) * x;
 
     var dir_rad = atan2(dir_to_mouse.y, dir_to_mouse.x);
-    dir_rad += SPREAD * x;
+    dir_rad += settings.spread * x;
     let dir = vec2<f32>(cos(dir_rad), sin(dir_rad));
 
-//    let wave = ((780.0 - 380.0) * random) + 380;
+    let wave = ((780.0 - 380.0) * random) + 380;
     let wave_length = float_to_packed(get_random(settings.timestamp, index + 3));
 
     data[index].pos = zero_pos + aj;
     data[index].last_pos = zero_pos;
     data[index].dir = dir;
-    data[index].strength = 0.05;
+    data[index].strength = settings.total_light / f32(settings.ray_count);
     data[index].wave_length_and_ior = wave_length;
 }

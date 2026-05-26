@@ -1,251 +1,183 @@
 #![allow(dead_code)]
 
 use std::f32::consts::PI;
-use bytemuck::{cast, cast_slice, cast_vec};
+use bytemuck::{bytes_of, cast, cast_slice, cast_vec};
 use glam::{vec2, Vec2};
-use wgpu::{BindGroupLayoutDescriptor, Buffer, BufferUsages, Device, Queue};
+use wgpu::{BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, Buffer, BufferUsages, Device, Queue};
+use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::wgt::BufferDescriptor;
+
+pub enum Shape {
+    Triangle,
+    Circle(u32),
+    RightTriangle,
+}
+impl Shape {
+    pub fn cast(&self) -> Vec<Vec2> {
+        match &self {
+            Shape::Triangle => {
+                let h = 0.5;
+                let f = 0.866;
+                vec![
+                    Vec2::new(-f, -h),
+                    Vec2::new(f, -h),
+                    Vec2::new(0.0, 1.),
+                ]
+            }
+            Shape::Circle(vert) => {
+                let vert = *vert as usize;
+                let mut vertices = Vec::with_capacity(vert);
+                for i in 0..vert {
+                    let per = i as f32 / vert as f32;
+                    let rad = PI * 2.0 * per;
+                    vertices.push(Vec2::new(rad.cos(), rad.sin()))
+                }
+
+                vertices
+            }
+            Shape::RightTriangle => {
+                vec![
+                    Vec2::new(-1., -1.),
+                    Vec2::new( 1., -1.),
+                    Vec2::new(-1.,  1.),
+                ]
+            }
+        }
+    }
+}
 
 pub struct Polygon {
     // in local space
     vertices: Vec<Vec2>,
 
-    position: Vec2,
-    rotation: f32,
-    scale: f32,
+    params: Params,
 
     world_space: Option<Vec<Vec2>>,
 
-    a_coff: f32,
-    b_coff: f32,
 
-
+    vertex_buffer: Buffer,
+    bind_group: BindGroup,
+    layout: BindGroupLayout,
 }
-impl Default for Polygon {
-    fn default() -> Self {
+impl Polygon {
+    pub fn init(device: &Device, queue: &Queue) -> Self {
+
+        let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Vert layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        // Optional: Minimum size of the buffer (Header + at least 1 element)
+                        min_binding_size: wgpu::BufferSize::new(8 + 8),
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let vertices: Vec<Vec2> = Shape::Triangle.cast();
+        let (vertex_buffer, bind_group) = Self::create_vertex_buffer(device, queue, &layout, &vertices);
+
         Self {
-            vertices: vec![],
-            position: Vec2::ZERO,
-            rotation: 0.0,
-            scale: 1.0,
+            vertices: vertices.clone(),
+            params: Params {
+                pos: Vec2::ZERO,
+                scale: 1.0,
+                rot: 0.0,
+            },
             world_space: None,
-            a_coff: 1.4580,
-            b_coff: 0.00354,
-        }
-    }
-}
-
-impl Polygon {
-    pub fn tri() -> Self {
-        let h = 0.5;
-        let f = 0.866;
-        Self {
-            vertices: vec![
-                Vec2::new(-f, -h),
-                Vec2::new(f, -h),
-                Vec2::new(0.0, 1.),
-            ],
-            ..Default::default()
+            vertex_buffer,
+            bind_group,
+            layout,
         }
     }
 
-    pub fn right_angle_tri() -> Self {
-        Self {
-            vertices: vec![
-                Vec2::new(-1., -1.),
-                Vec2::new( 1., -1.),
-                Vec2::new(-1.,  1.),
-            ],
-            ..Default::default()
-        }
+    pub fn create_vertex_buffer(device: &Device, queue: &Queue, layout: &BindGroupLayout, vertices: &[Vec2]) -> (Buffer, BindGroup) {
+        let length = vertices.len() as u32;
+        let vertices_bytes = cast_slice(&vertices);
+        let length_bytes = bytes_of(&length);
+        let padding_bytes = &[0u8; 4];
+
+        let buffer = device.create_buffer(&BufferDescriptor {
+            label: None,
+            size: (vertices_bytes.len() + length_bytes.len() + padding_bytes.len()) as u64,
+            usage: BufferUsages::STORAGE,
+            mapped_at_creation: false,
+        });
+
+        queue.write_buffer(&buffer, 0, length_bytes);
+        queue.write_buffer(&buffer, 4, padding_bytes);
+        queue.write_buffer(&buffer, 8, vertices_bytes);
+
+        let bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: None,
+            layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
+
+        (buffer, bind_group)
     }
 
-    pub fn circle_poly(res: usize) -> Self {
-        let mut vertices = Vec::with_capacity(res);
-        for i in 0..res {
-            let per = i as f32 / res as f32;
-            let rad = PI * 2.0 * per;
-            vertices.push(Vec2::new(rad.cos(), rad.sin()))
-        }
-
-        Self {
-            vertices,
-            ..Default::default()
-        }
-    }
-}
-impl Polygon {
-    pub fn pos(&self) -> Vec2 {
-        self.position
+    /// assumes size is correct
+    pub fn update_buffer(queue: &Queue, buffer: &Buffer, vertices: &[Vec2]) {
+        queue.write_buffer(&buffer, 8, cast_slice(vertices));
     }
 
-    pub fn rot(&self) -> f32 {
-        self.rotation
-    }
+    pub fn cast_worldspace<'a>(world_space: &'a mut Option<Vec<Vec2>>, vertices: &[Vec2], params: &Params) -> &'a [Vec2] {
+        if world_space.is_none() {
+            let mut out = Vec::with_capacity(vertices.len());
 
-    pub fn scale(&self) -> f32 { self.scale }
-
-    pub fn coff(&self) -> (f32, f32) { (self.a_coff, self.b_coff) }
-
-    pub fn set_pos(&mut self, pos: Vec2) {
-        self.world_space = None;
-        self.position = pos;
-    }
-
-    pub fn set_rot(&mut self, rot: f32) {
-        self.world_space = None;
-        self.rotation = rot;
-    }
-
-    pub fn set_scale(&mut self, scale: f32) {
-        self.world_space = None;
-        self.scale = scale;
-    }
-
-    pub fn set_coff(&mut self, ab: (f32, f32)) {
-        (self.a_coff, self.b_coff) = ab;
-    }
-
-    pub fn cast_worldspace(&mut self) -> &Vec<Vec2> {
-        if self.world_space.is_none() {
-            let mut out = Vec::with_capacity(self.vertices.len());
-
-            let sin_r = self.rotation.sin();
-            let cos_r = self.rotation.cos();
-            for v in self.vertices.iter() {
+            let sin_r = params.rot.sin();
+            let cos_r = params.rot.cos();
+            for v in vertices.iter() {
                 let rx = v.x * cos_r - v.y * sin_r;
                 let ry = v.x * sin_r + v.y * cos_r;
                 let mut rxy = vec2(rx, ry);
-                rxy *= self.scale;
-                rxy += self.position;
+                rxy *= params.scale;
+                rxy += params.pos;
                 out.push(rxy)
             }
 
-            self.world_space = Some(out);
+            *world_space = Some(out);
         }
 
-        self.world_space.as_ref().unwrap()
-    }
-}
-
-
-pub struct GraphicsPolygon {
-    polys: Vec<Polygon>,
-
-    // A coff, B coff, start index, end index
-    info_buffer: Buffer,
-    position_buffer: Buffer,
-
-    window: u32,
-    offset_b: u32,
-}
-impl GraphicsPolygon {
-    pub fn init(device: &Device) {
-        let window = device.limits().min_storage_buffer_offset_alignment;
-
-        let info_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("info_buffer"),
-            size: 0,
-            usage: BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        let position_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("info_buffer"),
-            size: 0,
-            usage: BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("Dynamic Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::all(),
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: true,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::all(),
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: true,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: info_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: position_buffer.as_entire_binding(),
-                },
-            ],
-            label: None,
-        });
-
-        let this_self = Self {
-            polys: vec![],
-            info_buffer,
-            position_buffer,
-            window,
-            offset_b: 0,
-        };
+        world_space.as_ref().unwrap()
     }
 
-    pub fn edit<F: FnMut(&mut Vec<Polygon>)>(&mut self, mut edit: F, queue: &Queue) {
+    pub fn set_shape(&mut self, device: &Device, queue: &Queue, shape: Shape) {
+        self.vertices = shape.cast();
+        let adjusted_verts = Self::cast_worldspace(&mut self.world_space, &self.vertices, &self.params);
+        let (vertex_buffer, bind_group) = Self::create_vertex_buffer(device, queue, &self.layout, adjusted_verts);
+        self.vertex_buffer.destroy();
+        self.vertex_buffer = vertex_buffer;
+        self.bind_group = bind_group;
+    }
 
-        todo!();
-
-        edit(&mut self.polys);
-
-        let mut vertex_buffer = Vec::new();
-        let mut info_buffer = Vec::new();
-        for poly in self.polys.iter_mut() {
-            let info = PolyInfo {
-                a_coff: poly.a_coff,
-                b_coff: poly.b_coff,
-                start_index: vertex_buffer.len() as u32,
-                length: poly.vertices.len() as u32,
-            };
-            info_buffer.push(info);
-            let mut pos = poly.cast_worldspace().clone();
-            vertex_buffer.append(&mut pos);
+    pub fn edit(&mut self, queue: &Queue, mut f: impl FnMut(&mut Params)) {
+        let mut params_c = self.params;
+        f(&mut params_c);
+        if params_c != self.params {
+            self.params = params_c;
+            let verts = Self::cast_worldspace(&mut self.world_space, &self.vertices, &self.params);
+            Self::update_buffer(queue, &self.vertex_buffer, verts);
         }
-
-
-        let mut ver_bytes: Vec<u8> = vec![];
-        vertex_buffer.into_iter().for_each(|fe| {
-            let t = [fe.x, fe.y];
-            let b: &[u8] = cast_slice(&t);
-            ver_bytes.extend_from_slice(b);
-        });
-        let mut info_bytes: Vec<u8> = cast_vec(info_buffer);
-
-        let info_off = align_to(self.window, info_bytes.len() as u32);
-        let diff = info_off - info_bytes.len() as u32;
-        for _ in 0..diff { info_bytes.push(0u8); }
-
-        let info_off = align_to(self.window, info_bytes.len() as u32);
-        let diff = info_off - info_bytes.len() as u32;
-        for _ in 0..diff { info_bytes.push(0u8); }
-
-
     }
 }
+
+#[derive(PartialEq, Copy, Clone)]
+pub struct Params {
+    pub pos: Vec2,
+    pub scale: f32,
+    pub rot: f32,
+}
+
 
 
 fn align_to(size: u32, alignment: u32) -> u32 {

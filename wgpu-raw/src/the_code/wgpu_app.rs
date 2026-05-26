@@ -39,16 +39,41 @@ fn t() {
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Settings {
     pub timestamp: f32,
-    pub width: u32,
-    pub height: u32,
-    pub aspect: f32, // replaces _padding1, same offset (12)
+    pub aspect: f32,
     pub mouse_pos_clip: [f32; 2],
-    pub do_ray_jobs: u32,
-    pub _padding: u32,
+    pub ray_count: u32,
+    pub ray_light_scale: f32,
+    pub a_factor: f32,
+    pub b_factor: f32,
+    pub brightness_scale: f32,
+    pub spread: f32,
+    pub width: f32,
+
+    pub light_dir: f32, // dir in radians
+    pub light_position: [f32; 2],
+
+    // pub padding: [f32; 1],
+}
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            timestamp: 0.0,
+            aspect: 1.0,
+            mouse_pos_clip: [0.0; 2],
+            ray_count: RAY_COUNT as u32,
+            ray_light_scale: 100_000.0,
+            a_factor: 1.517,
+            b_factor: 0.0042,
+            brightness_scale: 0.15,
+            spread: 0.0,
+            width: 0.0005,
+            light_dir: 0.1,
+            light_position: [-2.0, 0.0],
+        }
+    }
 }
 
-
-const RAY_COUNT: usize = 15_000_000;
+const RAY_COUNT: usize = 50_000;
 const ITERATIONS: usize = 32;
 
 pub struct WgpuApplication {
@@ -91,15 +116,7 @@ impl WgpuApplication {
         let start_instant = Instant::now();
         let settings_uniform = SimpleUniform::init(
             &device,
-            Settings {
-                timestamp: 0.0,
-                width: startup_info.display_size.0,
-                height: startup_info.display_size.1,
-                aspect: startup_info.display_size.0 as f32 / startup_info.display_size.1 as f32,
-                mouse_pos_clip: [0.0; 2],
-                do_ray_jobs: 1,
-                _padding: 0,
-            },
+            Settings::default(),
         );
 
         let line_primitive_renderer = LinePrimitiveRenderer::init(
@@ -136,8 +153,6 @@ impl WgpuApplication {
 
         self.line_texture.resize(&self.device, viewport_size);
         self.settings_uniform.edit(&self.queue, |s| {
-            s.width = viewport_size.0;
-            s.height = viewport_size.1;
             s.aspect = viewport_size.0 as f32 / viewport_size.1 as f32;
         });
     }
@@ -602,7 +617,7 @@ pub fn format_bytes(bytes: usize) -> String {
 pub fn combine(device: &Device, shaders: &[&'static str]) -> ShaderModule {
     let mut fin = String::new();
     for s in shaders {
-        fin.push_str(s)
+        fin.push_str(*s)
     }
     device.create_shader_module(ShaderModuleDescriptor {
         label: None,
