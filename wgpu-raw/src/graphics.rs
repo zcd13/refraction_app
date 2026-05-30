@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 use egui_wgpu::ScreenDescriptor;
-use wgpu::{Adapter, CurrentSurfaceTexture, Device, DeviceDescriptor, Features, Instance, Limits, MemoryHints, PowerPreference, PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureViewDescriptor};
+use wgpu::{Adapter, CurrentSurfaceTexture, Device, DeviceDescriptor, Features, Instance, MemoryHints, PowerPreference, PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureViewDescriptor};
 use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy, window::Window};
 use winit::event::WindowEvent;
 use crate::egui_renderer::EguiRenderer;

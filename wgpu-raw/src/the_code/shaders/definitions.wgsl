@@ -1,26 +1,26 @@
-struct LightRay {
-    pos: vec2<f32>,
-    last_pos: vec2<f32>,
-    dir: vec2<f32>,
-    strength: f32,
-    wave_length_and_ior: u32,
-};
+//struct LightRay {
+//    pos: vec2<f32>,
+//    last_pos: vec2<f32>,
+//    dir: vec2<f32>,
+//    strength: f32,
+//    wave_length_and_ior: u32,
+//};
 
-struct Settings {
-    timestamp: f32,
-    aspect: f32,
-    mouse_pos_clip: vec2<f32>,
-    ray_count: u32,
-    total_light: f32,
-    a_factor: f32,
-    b_factor: f32,
-    brightness_scale: f32,
-    spread: f32,
-    width: f32,
-    light_dir: f32, //
-    light_pos: vec2<f32>,
-//    padding_2: f32,
-};
+//struct Settings {
+//    timestamp: f32,
+//    aspect: f32,
+//    mouse_pos_clip: vec2<f32>,
+//    ray_count: u32,
+//    total_light: f32,
+//    a_factor: f32,
+//    b_factor: f32,
+//    brightness_scale: f32,
+//    spread: f32,
+//    width: f32,
+//    light_dir: f32, //
+//    light_pos: vec2<f32>,
+////    padding_2: f32,
+//};
 
 struct VertexBuffer {
     length: u32,

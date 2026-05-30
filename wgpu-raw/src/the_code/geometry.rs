@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 
 use std::f32::consts::PI;
-use bytemuck::{bytes_of, cast, cast_slice, cast_vec};
+use bytemuck::{bytes_of, cast_slice};
 use glam::{vec2, Vec2};
 use wgpu::{BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, Buffer, BufferUsages, Device, Queue};
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::wgt::BufferDescriptor;
 
 pub enum Shape {
@@ -98,7 +97,7 @@ impl Polygon {
 
     pub fn create_vertex_buffer(device: &Device, queue: &Queue, layout: &BindGroupLayout, vertices: &[Vec2]) -> (Buffer, BindGroup) {
         let length = vertices.len() as u32;
-        let vertices_bytes = cast_slice(&vertices);
+        let vertices_bytes = cast_slice(vertices);
         let length_bytes = bytes_of(&length);
         let padding_bytes = &[0u8; 4];
 
@@ -127,7 +126,7 @@ impl Polygon {
 
     /// assumes size is correct
     pub fn update_buffer(queue: &Queue, buffer: &Buffer, vertices: &[Vec2]) {
-        queue.write_buffer(&buffer, 8, cast_slice(vertices));
+        queue.write_buffer(buffer, 8, cast_slice(vertices));
     }
 
     pub fn cast_worldspace<'a>(world_space: &'a mut Option<Vec<Vec2>>, vertices: &[Vec2], params: &Params) -> &'a [Vec2] {
