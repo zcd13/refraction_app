@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::too_many_arguments)]
 
 pub struct NoSampler;
 pub struct HasSampler {

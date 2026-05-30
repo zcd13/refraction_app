@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 
 use crate::the_code::texture::{GpuTexture, GpuTextureBuilder, HasSampler};
-use crate::the_code::utils::{AutoUniform, SimpleBuffer, SimpleUniform, TextureSamplerRenderer};
+use crate::the_code::utils::{AutoUniform, SimpleBuffer, TextureSamplerRenderer};
 use crate::the_code::{LightRay, Settings, StartupInfo, ITERATIONS, RAY_COUNT};
 use glam::vec2;
 use std::time::Instant;
@@ -124,7 +124,7 @@ impl WgpuApplication {
                 let aspect = self.screen_size.0 as f32 / self.screen_size.1 as f32;
                 let mp_world = vec2(mp.0 * aspect, mp.1);
 
-                s.mouse_pos_clip = mp_world.into();
+                s.mouse_pos_clip = mp_world;
             }
         });
 

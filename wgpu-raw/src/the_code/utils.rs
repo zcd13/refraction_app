@@ -1,70 +1,11 @@
 use std::marker::PhantomData;
-use bytemuck::{bytes_of, cast_slice, Pod, Zeroable};
+use bytemuck::{cast_slice, Pod, Zeroable};
 use encase::{ShaderType, UniformBuffer};
 use encase::internal::WriteInto;
 use wgpu::{include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendState, Buffer, BufferBindingType, BufferUsages, ColorTargetState, ColorWrites, CommandEncoder, Device, FragmentState, FrontFace, MultisampleState, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, ShaderStages, TextureFormat, TextureView, VertexState};
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::wgt::BufferDescriptor;
 use crate::the_code::texture::{GpuTexture, HasSampler};
-
-pub struct SimpleUniform<T: Pod + Zeroable> {
-    data: T,
-    buffer: Buffer,
-    pub bind_group: BindGroup,
-    pub bind_group_layout: BindGroupLayout,
-}
-impl<T: Pod + Zeroable> SimpleUniform<T> {
-    pub fn init(device: &Device, data: T) -> Self {
-        let buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Uniform"),
-            contents: bytes_of(&data),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT | ShaderStages::COMPUTE,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: None,
-            layout: &bind_group_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
-        });
-
-        Self {
-            data,
-            buffer,
-            bind_group,
-            bind_group_layout,
-        }
-    }
-
-    pub fn edit<F: FnMut(&mut T)>(&mut self, queue: &Queue, mut f: F) {
-        f(&mut self.data);
-        queue.write_buffer(&self.buffer, 0, bytes_of(&self.data));
-    }
-
-    pub fn write_current_data(&mut self, queue: &Queue) {
-        queue.write_buffer(&self.buffer, 0, bytes_of(&self.data));
-    }
-
-    pub fn mod_data(&mut self) -> &mut T {
-        &mut self.data
-    }
-}
 
 
 pub struct AutoUniform<T: ShaderType + WriteInto> {
@@ -152,7 +93,7 @@ pub struct SimpleBuffer<T: Pod + Zeroable> {
 }
 impl<T: Pod + Zeroable> SimpleBuffer<T> {
     pub fn init_with(data: &[T], device: &Device) -> Self {
-        let size_bytes = std::mem::size_of_val(data);
+        let size_bytes = size_of_val(data);
         let buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: None,
             contents: cast_slice(data),

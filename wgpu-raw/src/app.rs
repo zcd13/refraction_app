@@ -7,6 +7,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
+#[allow(clippy::large_enum_variant)]
 enum State {
     Ready(Graphics),
     Init(Option<EventLoopProxy<Graphics>>),

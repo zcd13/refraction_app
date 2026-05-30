@@ -30,14 +30,6 @@ into_wgsl!(
     }
 );
 
-impl LightRay {
-    fn u16_wave(wave: f32) -> u16 {
-        let clamped = wave.clamp(381.0, 779.0);
-        let normalized = (clamped - 350.0) / 350.0;
-        (normalized * 65535.0).round() as u16
-    }
-}
-
 
 
 into_wgsl!(
