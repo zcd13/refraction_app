@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 
+use crate::the_code::texture::{GpuTexture, GpuTextureBuilder, HasSampler};
 use crate::the_code::wgpu_app::sample_render::TextureSamplerRenderer;
 use crate::the_code::StartupInfo;
 use bytemuck::{bytes_of, cast, cast_slice, Pod, Zeroable};
@@ -10,8 +11,16 @@ use std::marker::PhantomData;
 use std::time::Instant;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::wgt::{BufferDescriptor, PollType, SamplerDescriptor};
-use wgpu::{include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendComponent, BlendFactor, BlendOperation, BlendState, Buffer, BufferAddress, BufferBindingType, BufferUsages, Color, ColorTargetState, ColorWrites, CommandEncoder, ComputePipeline, ComputePipelineDescriptor, Device, FilterMode, FragmentState, FrontFace, LoadOpDontCare, MultisampleState, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue, RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureFormat, TextureUsages, TextureView, VertexState};
-use crate::the_code::texture::{GpuTexture, GpuTextureBuilder, HasSampler};
+use wgpu::{
+    include_wgsl, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BlendComponent, BlendFactor,
+    BlendOperation, BlendState, Buffer, BufferAddress, BufferBindingType, BufferUsages, Color,
+    ColorTargetState, ColorWrites, CommandEncoder, ComputePipeline, ComputePipelineDescriptor,
+    Device, FilterMode, FragmentState, FrontFace, LoadOpDontCare, MultisampleState,
+    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, Queue,
+    RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource,
+    ShaderStages, TextureFormat, TextureUsages, TextureView, VertexState,
+};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -51,8 +60,6 @@ pub struct Settings {
 
     pub light_dir: f32, // dir in radians
     pub light_position: [f32; 2],
-
-    // pub padding: [f32; 1],
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -95,6 +102,8 @@ pub struct WgpuApplication {
 }
 impl WgpuApplication {
     pub fn init(startup_info: StartupInfo, device: Device, queue: Queue) -> Self {
+        let screen_size = startup_info.display_size;
+
         let light_ray_buffer = SimpleBuffer::init(&device, RAY_COUNT);
 
         let line_texture = GpuTextureBuilder::new(
@@ -103,20 +112,23 @@ impl WgpuApplication {
             TextureFormat::Rgba16Float,
             TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
         )
-        .with_sampler(
-            SamplerDescriptor {
-                mag_filter: FilterMode::Nearest,
-                min_filter: FilterMode::Nearest,
-                ..Default::default()
-            },
-            true,
-        )
-        .make();
+            .with_sampler(
+                SamplerDescriptor {
+                    mag_filter: FilterMode::Nearest,
+                    min_filter: FilterMode::Nearest,
+                    ..Default::default()
+                },
+                true,
+            )
+            .make();
 
         let start_instant = Instant::now();
         let settings_uniform = SimpleUniform::init(
             &device,
-            Settings::default(),
+            Settings {
+                aspect: screen_size.0 as f32 / screen_size.1 as f32,
+                ..Default::default()
+            },
         );
 
         let line_primitive_renderer = LinePrimitiveRenderer::init(
@@ -131,8 +143,6 @@ impl WgpuApplication {
 
         let line_physics_compute_pass =
             LinePhysicsComputePass::init(&device, &light_ray_buffer, &settings_uniform);
-
-        let screen_size = startup_info.display_size;
 
         Self {
             device,
@@ -157,21 +167,44 @@ impl WgpuApplication {
         });
     }
 
-    pub fn update(&mut self, mouse_pos: (f32, f32)) {
-        let mp = mouse_to_clip(mouse_pos, self.screen_size);
-        let aspect = self.screen_size.0 as f32 / self.screen_size.1 as f32;
-        let mp_world = (mp.0 * aspect, mp.1);
+    pub fn update(&mut self, ppp: f32, ctx: &egui::Context) {
+        let s = self.settings_uniform.mod_data();
 
-        self.settings_uniform.edit(&self.queue, |s| {
-            s.timestamp = self.start_instant.elapsed().as_secs_f32();
-            s.mouse_pos_clip = [mp_world.0, mp_world.1];
+        egui::Window::new("winit + egui + wgpu says hello!")
+            .resizable(true)
+            .vscroll(true)
+            .default_open(false)
+            .show(ctx, |ui| {
+                ui.label("Label!");
+
+                if ui.button("Button!").clicked() {
+                    println!("boom!")
+                }
+
+                ui.label(format!("{}", ppp));
+            });
+
+        ctx.input(|i| {
+            if let Some(p) = i.pointer.latest_pos() {
+                let p = p * ppp;
+
+                let mp = mouse_to_clip(p.into(), self.screen_size);
+                let aspect = self.screen_size.0 as f32 / self.screen_size.1 as f32;
+                let mp_world = vec2(mp.0 * aspect, mp.1);
+
+                s.mouse_pos_clip = mp_world.into();
+            }
         });
+
+        s.timestamp = self.start_instant.elapsed().as_secs_f32();
+
+        self.settings_uniform.write_current_data(&self.queue);
     }
 
-    pub fn render(&mut self, view: &TextureView) {
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    pub fn render(&mut self, view: &TextureView, encoder: &mut CommandEncoder) {
+        // let mut encoder = self
+        //     .device
+        //     .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         {
             // clear texture
@@ -194,35 +227,45 @@ impl WgpuApplication {
                 });
             }
 
-            self.line_physics_compute_pass.init_pass(&mut encoder, &self.light_ray_buffer, &self.settings_uniform);
-
+            self.line_physics_compute_pass.init_pass(
+                encoder,
+                &self.light_ray_buffer,
+                &self.settings_uniform,
+            );
 
             for _ in 0..ITERATIONS {
-                self.line_physics_compute_pass.compute_pass(&mut encoder, &self.light_ray_buffer, &self.settings_uniform);
+                self.line_physics_compute_pass.compute_pass(
+                    encoder,
+                    &self.light_ray_buffer,
+                    &self.settings_uniform,
+                );
 
-                self.line_primitive_renderer.render_lines(&mut encoder, &self.line_texture.view, &self.light_ray_buffer, &self.settings_uniform);
+                self.line_primitive_renderer.render_lines(
+                    encoder,
+                    &self.line_texture.view,
+                    &self.light_ray_buffer,
+                    &self.settings_uniform,
+                );
             }
 
-
-
             self.line_primitive_renderer.render_geometry(
-                &mut encoder,
+                encoder,
                 &self.line_texture.view,
                 &self.settings_uniform,
             );
 
             self.display_pipeline
-                .render(&mut encoder, view, &self.line_texture);
+                .render(encoder, view, &self.line_texture);
         }
 
-        let command_buffer = encoder.finish();
-        self.queue.submit(Some(command_buffer));
-        self.device
-            .poll(PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .unwrap();
+        // let command_buffer = encoder.finish();
+        // self.queue.submit(Some(command_buffer));
+        // self.device
+        //     .poll(PollType::Wait {
+        //         submission_index: None,
+        //         timeout: None,
+        //     })
+        //     .unwrap();
     }
 }
 
@@ -386,6 +429,14 @@ impl<T: Pod + Zeroable> SimpleUniform<T> {
         f(&mut self.data);
         queue.write_buffer(&self.buffer, 0, bytes_of(&self.data));
     }
+
+    pub fn write_current_data(&mut self, queue: &Queue) {
+        queue.write_buffer(&self.buffer, 0, bytes_of(&self.data));
+    }
+
+    pub fn mod_data(&mut self) -> &mut T {
+        &mut self.data
+    }
 }
 
 pub struct LinePrimitiveRenderer {
@@ -473,14 +524,11 @@ impl LinePrimitiveRenderer {
             ],
         );
 
-        let geometry_layout =
-            device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: Some("geometry_layout"),
-                bind_group_layouts: &[
-                    Some(&settings_uniform.bind_group_layout),
-                ],
-                immediate_size: 0,
-            });
+        let geometry_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("geometry_layout"),
+            bind_group_layouts: &[Some(&settings_uniform.bind_group_layout)],
+            immediate_size: 0,
+        });
 
         let geometry_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("line_render_pipeline"),
@@ -528,7 +576,6 @@ impl LinePrimitiveRenderer {
             cache: None,
         });
 
-
         Self {
             ray_pipeline: line_render_pipeline,
             geometry_pipeline,
@@ -565,7 +612,6 @@ impl LinePrimitiveRenderer {
         render_pass.set_bind_group(1, &settings_uniform.bind_group, &[]);
         render_pass.draw(0..2, 0..ray_buffer.size_elements);
     }
-
 
     pub fn render_geometry(
         &self,
@@ -686,7 +732,10 @@ impl LinePhysicsComputePass {
             cache: None,
         });
 
-        Self { compute_pipeline, init_pipeline }
+        Self {
+            compute_pipeline,
+            init_pipeline,
+        }
     }
 
     pub fn compute_pass(
@@ -732,10 +781,9 @@ impl LinePhysicsComputePass {
     }
 }
 
-
 pub mod sample_render {
-    use wgpu::*;
     use crate::the_code::texture::{GpuTexture, HasSampler};
+    use wgpu::*;
 
     pub struct TextureSamplerRenderer {
         pipeline: RenderPipeline,

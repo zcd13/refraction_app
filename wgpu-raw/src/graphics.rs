@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
 use std::time::{Duration, Instant};
+use egui_wgpu::ScreenDescriptor;
 use wgpu::{Adapter, CurrentSurfaceTexture, Device, DeviceDescriptor, Features, Instance, Limits, MemoryHints, PowerPreference, PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureViewDescriptor};
-use wgpu::hal::DynQueue;
 use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy, window::Window};
+use winit::event::WindowEvent;
+use crate::egui_renderer::EguiRenderer;
 use crate::the_code::StartupInfo;
 use crate::the_code::wgpu_app::WgpuApplication;
 
@@ -55,6 +57,8 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
         display_size: (width, height),
     }, device.clone(), queue.clone());
 
+    let egui_renderer = EguiRenderer::new(&device, surface_config.format, None, 0, &window);
+
     let gfx = Graphics {
         window: window.clone(),
         instance,
@@ -66,6 +70,7 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
         wgpu_application,
         fps_counter: FpsCounter::new(Duration::from_secs(1)),
         mouse_pos: (0.0, 0.0),
+        egui_renderer,
     };
 
     let _ = proxy.send_event(gfx);
@@ -83,6 +88,7 @@ pub struct Graphics {
     wgpu_application: WgpuApplication,
     fps_counter: FpsCounter,
     pub mouse_pos: (f32, f32),
+    egui_renderer: EguiRenderer,
 }
 
 impl Graphics {
@@ -98,22 +104,65 @@ impl Graphics {
     }
 
     pub fn draw(&mut self) {
-        self.wgpu_application.update(self.mouse_pos);
+        let ppp = self.egui_renderer.context().pixels_per_point();
 
-        let frame = self
-            .surface
-            .get_current_texture();
+        if let Some(min) = self.window.is_minimized() {
+            if min {
+                println!("Window is minimized");
+                return;
+            }
+        }
 
-
-        match frame {
-            CurrentSurfaceTexture::Success(tex) => {
-                let view = tex.texture.create_view(&TextureViewDescriptor::default());
-                self.wgpu_application.render(&view);
-                tex.present();
-                self.fps_counter.update();
-            },
-            _ => panic!("Surface texture failure"),
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: [self.surface_config.width, self.surface_config.height],
+            pixels_per_point: self.window.scale_factor() as f32
+                * 1.0,
         };
+
+        let surface_texture = self.surface.get_current_texture();
+
+        let surface_texture = match surface_texture {
+            CurrentSurfaceTexture::Success(tex) => tex,
+            _ => {
+                eprintln!("Texture problems");
+                return;
+            }
+        };
+
+        let surface_view = surface_texture
+            .texture
+            .create_view(&TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let window = &self.window;
+
+        self.wgpu_application.render(&surface_view, &mut encoder);
+
+        {
+            self.egui_renderer.begin_frame(window);
+
+            self.wgpu_application.update(ppp, self.egui_renderer.context());
+
+            self.egui_renderer.end_frame_and_draw(
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                window,
+                &surface_view,
+                screen_descriptor,
+            );
+        }
+
+        self.queue.submit(Some(encoder.finish()));
+        surface_texture.present();
+
+    }
+
+    pub fn handle_input(&mut self, event: &WindowEvent) {
+        self.egui_renderer.handle_input(&self.window, event);
     }
 }
 

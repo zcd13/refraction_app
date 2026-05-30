@@ -83,8 +83,8 @@ impl ApplicationHandler<Graphics> for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        match event {
-            WindowEvent::Resized(size) => self.resized(size),
+        match &event {
+            WindowEvent::Resized(size) => self.resized(*size),
             WindowEvent::RedrawRequested => self.draw(),
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::CursorMoved { position, .. } => {
@@ -95,6 +95,9 @@ impl ApplicationHandler<Graphics> for App {
 
         if let State::Ready(g) = &mut self.state {
             g.mouse_pos = self.mouse_pos;
+            g.handle_input(&event);
         }
+
+
     }
 }
