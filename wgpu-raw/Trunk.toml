@@ -1,0 +1,6 @@
+[build]
+target = "index.html"
+
+[html]
+# CRITICAL: Replace 'your-repository-name' with your actual GitHub repo name
+public_url = "https://github.com/zcd13/refraction_app"

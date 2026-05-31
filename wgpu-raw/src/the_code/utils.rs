@@ -152,13 +152,13 @@ impl<T: Pod + Zeroable> SimpleBuffer<T> {
         device: &Device,
         buffer: &Buffer,
     ) -> (BindGroupLayout, BindGroupLayout, BindGroup, BindGroup) {
-        let read_write_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let read_write_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
+            entries: &[BindGroupLayoutEntry {
                 binding: 0,
                 visibility: ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: false },
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Storage { read_only: false },
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },
@@ -166,13 +166,13 @@ impl<T: Pod + Zeroable> SimpleBuffer<T> {
             }],
         });
 
-        let read_only_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let read_only_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
+            entries: &[BindGroupLayoutEntry {
                 binding: 0,
                 visibility: ShaderStages::FRAGMENT | ShaderStages::VERTEX | ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Storage { read_only: true },
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Storage { read_only: true },
                     has_dynamic_offset: false,
                     min_binding_size: None,
                 },
