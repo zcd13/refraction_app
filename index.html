@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WGPU-template</title>
+    <style>
+        body {
+            margin: 0;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas:focus {
+            outline: none
+        }
+    </style>
+<link rel="modulepreload" href="https://zcd13.github.io/refraction_app/light_thinggo-96232d5d809ed9f3.js" crossorigin="anonymous" integrity="sha384-RWjEKfpfjbHNB/n72d7vu7frwMgEcuiNXXFZtxIqexys7VRg3Je65l0NDKrMFNhs"><link rel="preload" href="https://zcd13.github.io/refraction_app/light_thinggo-96232d5d809ed9f3_bg.wasm" crossorigin="anonymous" integrity="sha384-LJrrGKQ0IA5OWUyJ6acd01Xyj5Ci1zALT1GWotza/GFKKP4hBNQwpq+PGQPYLSP6" as="fetch" type="application/wasm"></head>
+<body>
+<script type="module">
+import init, * as bindings from 'https://zcd13.github.io/refraction_app/light_thinggo-96232d5d809ed9f3.js';
+const wasm = await init({ module_or_path: 'https://zcd13.github.io/refraction_app/light_thinggo-96232d5d809ed9f3_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script></body>
+
+</html>
