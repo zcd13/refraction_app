@@ -23,6 +23,8 @@ jobs:
 
       - name: Cache Rust Dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "wgpu-raw -> target"
 
       - name: Download and Install Trunk
         run: |
