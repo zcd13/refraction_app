@@ -1,5 +1,0 @@
-[build]
-target = "index.html"
-
-[html]
-public_url = "https://github.com/zcd13/refraction_app/"
