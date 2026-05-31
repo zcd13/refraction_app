@@ -2,4 +2,4 @@
 target = "index.html"
 
 [html]
-public_url = "/refraction_app/"
+public_url = "https://github.com/zcd13/refraction_app/"
