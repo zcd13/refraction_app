@@ -2,5 +2,4 @@
 target = "index.html"
 
 [html]
-# CRITICAL: Replace 'your-repository-name' with your actual GitHub repo name
 public_url = "/refraction_app/"
