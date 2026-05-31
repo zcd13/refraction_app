@@ -75,6 +75,5 @@ fn float_to_packed(float: f32) -> u32 {
 
 
 fn new_strength(strength: f32, factor: f32) -> f32 {
-    let adjustment = pow(strength, settings.brightness_scale);
-    return strength * pow(factor, adjustment);
+    return strength * pow(factor, settings.brightness_scale);
 }

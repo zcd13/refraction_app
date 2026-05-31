@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::time::{Duration, Instant};
+use std::sync::Arc;
 use egui_wgpu::ScreenDescriptor;
 use wgpu::{Adapter, CurrentSurfaceTexture, Device, DeviceDescriptor, Features, Instance, MemoryHints, PowerPreference, PresentMode, Queue, RequestAdapterOptions, Surface, SurfaceConfiguration, TextureViewDescriptor};
 use winit::{dpi::PhysicalSize, event_loop::EventLoopProxy, window::Window};
@@ -9,15 +9,15 @@ use crate::egui_renderer::EguiRenderer;
 use crate::the_code::StartupInfo;
 use crate::the_code::wgpu_app::WgpuApplication;
 
-#[cfg(target_arch = "wasm32")]
-pub type Rc<T> = std::rc::Rc<T>;
+// #[cfg(target_arch = "wasm32")]
+// pub type Rc<T> = std::rc::Rc<T>;
 
-#[cfg(not(target_arch = "wasm32"))]
-pub type Rc<T> = std::sync::Arc<T>;
+// #[cfg(not(target_arch = "wasm32"))]
+// pub type Rc<T> = std::sync::Arc<T>;
 
-pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>) {
+pub async fn create_graphics(window: Arc<Window>, proxy: EventLoopProxy<Graphics>) {
     let instance = Instance::default();
-    let surface = instance.create_surface(Rc::clone(&window)).unwrap();
+    let surface = instance.create_surface(Arc::clone(&window)).unwrap();
     let adapter = instance
         .request_adapter(&RequestAdapterOptions {
             power_preference: PowerPreference::HighPerformance, // Power preference for the device
@@ -30,7 +30,7 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
     let (device, queue) = adapter
         .request_device(&DeviceDescriptor {
             label: None,
-            required_features: Features::empty(), // Specifies the required features by the device request. Fails if the adapter can't provide them.
+            required_features: Features::empty(),
             // todo set min limits for the project
             required_limits: adapter.limits(),
             memory_hints: MemoryHints::Performance,
@@ -47,7 +47,7 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
     let height = size.height.max(1);
     let mut surface_config = surface
         .get_default_config(&adapter, width, height).unwrap();
-    surface_config.present_mode = PresentMode::Immediate;
+    surface_config.present_mode = PresentMode::Fifo;
 
 
     surface.configure(&device, &surface_config);
@@ -68,7 +68,6 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
         device,
         queue,
         wgpu_application,
-        fps_counter: FpsCounter::new(Duration::from_secs(1)),
         mouse_pos: (0.0, 0.0),
         egui_renderer,
     };
@@ -78,7 +77,7 @@ pub async fn create_graphics(window: Rc<Window>, proxy: EventLoopProxy<Graphics>
 
 
 pub struct Graphics {
-    window: Rc<Window>,
+    window: Arc<Window>,
     instance: Instance,
     surface: Surface<'static>,
     surface_config: SurfaceConfiguration,
@@ -86,7 +85,6 @@ pub struct Graphics {
     device: Device,
     queue: Queue,
     wgpu_application: WgpuApplication,
-    fps_counter: FpsCounter,
     pub mouse_pos: (f32, f32),
     egui_renderer: EguiRenderer,
 }
@@ -163,43 +161,5 @@ impl Graphics {
 
     pub fn handle_input(&mut self, event: &WindowEvent) {
         self.egui_renderer.handle_input(&self.window, event);
-    }
-}
-
-
-
-
-pub struct FpsCounter {
-    print_interval: Duration,
-    last_print_time: Instant,
-    frame_count: u32,
-}
-impl FpsCounter {
-    /// Creates and starts the FPS counter
-    pub fn new(print_interval: Duration) -> Self {
-        Self {
-            print_interval,
-            last_print_time: Instant::now(),
-            frame_count: 0,
-        }
-    }
-
-    /// Call this once per frame.
-    /// It automatically prints and resets when the interval is reached.
-    pub fn update(&mut self) {
-        self.frame_count += 1;
-
-        let elapsed = self.last_print_time.elapsed();
-
-        if elapsed >= self.print_interval {
-            // Calculate frames per second
-            let fps = self.frame_count as f64 / elapsed.as_secs_f64();
-
-            println!("FPS: {:.2}", fps);
-
-            // Reset the counter and timer for the next batch
-            self.frame_count = 0;
-            self.last_print_time = Instant::now();
-        }
     }
 }

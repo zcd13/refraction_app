@@ -2,6 +2,8 @@
 @group(0) @binding(0) var t_hdr: texture_2d<f32>;
 @group(0) @binding(1) var s_hdr: sampler;
 
+@group(1) @binding(0) var<uniform> settings: Settings;
+
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -31,6 +33,15 @@ fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let hdr_color = textureSample(t_hdr, s_hdr, in.uv).rgb;
+
+    if settings.tonemapping == 0 {
+        if max(max(hdr_color.r, hdr_color.g), hdr_color.b) < settings.debug_cutoff {
+            return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+        }
+
+        return vec4<f32>(hdr_color, 1.0);
+    }
+
 
     // 1. Filmic Tonemapping (ACES-like)
     // This curve prevents high values from clipping too harshly

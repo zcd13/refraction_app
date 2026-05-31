@@ -1,4 +1,5 @@
-use crate::graphics::{create_graphics, Graphics, Rc};
+use std::sync::Arc;
+use crate::graphics::{create_graphics, Graphics};
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -57,7 +58,7 @@ impl ApplicationHandler<Graphics> for App {
                     win_attr = win_attr.with_append(true);
                 }
 
-                let window = Rc::new(
+                let window = Arc::new(
                     event_loop
                         .create_window(win_attr)
                         .expect("create window err."),

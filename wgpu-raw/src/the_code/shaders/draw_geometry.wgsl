@@ -1,5 +1,6 @@
 //@group(0) @binding(0) var<storage, read> rays: array<LightRay>;
 @group(0) @binding(0) var<uniform> settings: Settings;
+@group(1) @binding(0) var<storage, read> geometry: array<vec2<f32>>;
 
 struct VertexOutput {
     @builtin(position) clip_pos: vec4<f32>,
@@ -13,7 +14,7 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    var pos = VERT_ARRAY[v_idx % VERT_LEN];
+    var pos = geometry[v_idx % arrayLength(&geometry)];
 
     // draw geometry
     pos.x /= settings.aspect;

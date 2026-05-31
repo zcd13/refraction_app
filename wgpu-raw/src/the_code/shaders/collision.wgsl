@@ -1,14 +1,14 @@
 const INF: f32 = 3.402823466e+38f;
 
-const VERT_ARRAY = array(
-vec2<f32>( 0.0,    0.5),   // Top
-    vec2<f32>( 0.3,    0.25),  // Top Right
-    vec2<f32>( 0.3,   -0.25),  // Bottom Right
-    vec2<f32>( 0.0,   -0.5),   // Bottom
-    vec2<f32>(-0.3,   -0.25),  // Bottom Left
-    vec2<f32>(-0.3,    0.25),  // Top Left
-);
-const VERT_LEN: u32 = 6;
+//const VERT_ARRAY = array(
+//vec2<f32>( 0.0,    0.5),   // Top
+//    vec2<f32>( 0.3,    0.25),  // Top Right
+//    vec2<f32>( 0.3,   -0.25),  // Bottom Right
+//    vec2<f32>( 0.0,   -0.5),   // Bottom
+//    vec2<f32>(-0.3,   -0.25),  // Bottom Left
+//    vec2<f32>(-0.3,    0.25),  // Top Left
+//);
+//const VERT_LEN: u32 = 6;
 
 /*
 
@@ -25,9 +25,10 @@ fn collide(ro: vec2<f32>, rd: vec2<f32>) -> Collision {
     var num_inter: u32 = 0;
     var normal = vec2(0.0);
 
-    for (var i: u32 = 0; i < VERT_LEN; i += 1) {
-        let a = VERT_ARRAY[i];
-        let b = VERT_ARRAY[(i + 1) % VERT_LEN];
+    let vert_len = arrayLength(&geometry);
+    for (var i: u32 = 0; i < vert_len; i += 1) {
+        let a = geometry[i];
+        let b = geometry[(i + 1) % vert_len];
 
         let v = b - a;
         let w = ro - a;
@@ -39,7 +40,7 @@ fn collide(ro: vec2<f32>, rd: vec2<f32>) -> Collision {
 
         if t >= 0.0 && t <= 1.0 {
             let u = ((w.x * v.y) - (w.y * v.x)) / det;
-            if u > 0.0 {
+            if u > 0.00001 {
                 num_inter += 1;
                 if u < hit_dist {
                     hit_dist = u;

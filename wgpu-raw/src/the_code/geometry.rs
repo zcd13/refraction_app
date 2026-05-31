@@ -1,27 +1,36 @@
 #![allow(dead_code)]
 
-use std::f32::consts::PI;
-use bytemuck::{bytes_of, cast_slice};
+use crate::the_code::utils::SimpleBuffer;
 use glam::{vec2, Vec2};
-use wgpu::{BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, Buffer, BufferUsages, Device, Queue};
-use wgpu::wgt::BufferDescriptor;
+use std::f32::consts::PI;
+use wgpu::{Device, Queue, };
+use crate::enum_iter;
 
-pub enum Shape {
-    Triangle,
-    Circle(u32),
-    RightTriangle,
-}
+
+
+enum_iter!(
+    #[derive(Debug, PartialOrd, PartialEq, Copy, Clone)]
+    pub enum Shape {
+        Triangle,
+        Circle(u32 => 300),
+        RightTriangle,
+        Diamond,
+        DiamondFlat,
+        Star,
+        FancyDiamond,
+        Hexagon,
+        Trapezoid,
+        DiamondFancy,
+    }
+);
+
 impl Shape {
     pub fn cast(&self) -> Vec<Vec2> {
         match &self {
             Shape::Triangle => {
                 let h = 0.5;
                 let f = 0.866;
-                vec![
-                    Vec2::new(-f, -h),
-                    Vec2::new(f, -h),
-                    Vec2::new(0.0, 1.),
-                ]
+                vec![Vec2::new(-f, -h), Vec2::new(f, -h), Vec2::new(0.0, 1.)]
             }
             Shape::Circle(vert) => {
                 let vert = *vert as usize;
@@ -31,14 +40,89 @@ impl Shape {
                     let rad = PI * 2.0 * per;
                     vertices.push(Vec2::new(rad.cos(), rad.sin()))
                 }
-
                 vertices
             }
             Shape::RightTriangle => {
+                vec![Vec2::new(-1., -1.), Vec2::new(1., -1.), Vec2::new(-1., 1.)]
+            }
+            Shape::Diamond => {
                 vec![
-                    Vec2::new(-1., -1.),
-                    Vec2::new( 1., -1.),
-                    Vec2::new(-1.,  1.),
+                    Vec2::new(0.0, 1.0),  // Top
+                    Vec2::new(0.7, 0.0),  // Right
+                    Vec2::new(0.0, -1.0), // Bottom
+                    Vec2::new(-0.7, 0.0), // Left
+                ]
+            }
+            Shape::Star => {
+                // A clean 5-pointed star outline using alternating inner/outer points
+                let mut vertices = Vec::with_capacity(10);
+                for i in 0..10 {
+                    let per = i as f32 / 10.0;
+                    // Offset by PI/2 to make the star point straight up
+                    let rad = (PI * 2.0 * per) + (PI / 2.0);
+                    let r = if i % 2 == 0 { 1.0 } else { 0.382 }; // Outer vs inner radius
+                    vertices.push(Vec2::new(rad.cos() * r, rad.sin() * r));
+                }
+                vertices
+            }
+            Shape::FancyDiamond => {
+                // A classic 2D stylized crystal or gem silhouette (elongated diamond with wider shoulders)
+                vec![
+                    Vec2::new(0.0, 1.0),   // Top sharp point
+                    Vec2::new(0.5, 0.3),   // Upper right shoulder
+                    Vec2::new(0.0, -1.0),  // Bottom long point
+                    Vec2::new(-0.5, 0.3),  // Upper left shoulder
+                ]
+            }
+            Shape::Hexagon => {
+                // Flat-topped regular hexagon
+                let mut vertices = Vec::with_capacity(6);
+                for i in 0..6 {
+                    let per = i as f32 / 6.0;
+                    let rad = (PI * 2.0 * per) + (PI / 6.0); // Offset to keep it flat on top/bottom
+                    vertices.push(Vec2::new(rad.cos(), rad.sin()));
+                }
+                vertices
+            }
+            Shape::Trapezoid => {
+                vec![
+                    Vec2::new(-0.5, 0.7),  // Top Left
+                    Vec2::new(0.5, 0.7),   // Top Right
+                    Vec2::new(1.0, -0.7),  // Bottom Right
+                    Vec2::new(-1.0, -0.7), // Bottom Left
+                ]
+            }
+            Shape::DiamondFlat => {
+                let short = 0.2;
+                let long = 0.8;
+
+                vec![
+                    Vec2::new(-short,  long),
+                    Vec2::new( short,  long),
+                    Vec2::new( long,   short),
+                    Vec2::new( long,  -short),
+                    Vec2::new( short, -long),
+                    Vec2::new(-short, -long),
+                    Vec2::new(-long,  -short),
+                    Vec2::new(-long,   short),
+                ]
+            }
+
+            Shape::DiamondFancy => {
+                let table_w = 0.45;
+                let crown_h = 0.25;
+                let girdle_w = 0.90;
+                let girdle_h = 0.05;
+                let pavilion_h = 0.70;
+
+                vec![
+                    Vec2::new(-table_w, crown_h + girdle_h),
+                    Vec2::new(table_w, crown_h + girdle_h),
+                    Vec2::new(girdle_w, girdle_h),
+                    Vec2::new(girdle_w, 0.0),
+                    Vec2::new(0.0, -pavilion_h),
+                    Vec2::new(-girdle_w, 0.0),
+                    Vec2::new(-girdle_w, girdle_h),
                 ]
             }
         }
@@ -48,88 +132,37 @@ impl Shape {
 pub struct Polygon {
     // in local space
     vertices: Vec<Vec2>,
-
     params: Params,
-
     world_space: Option<Vec<Vec2>>,
-
-
-    vertex_buffer: Buffer,
-    bind_group: BindGroup,
-    layout: BindGroupLayout,
+    pub buffer: SimpleBuffer<Vec2>,
+    pub current_shape: Shape,
 }
 impl Polygon {
-    pub fn init(device: &Device, queue: &Queue) -> Self {
-
-        let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("Vert layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE | wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        // Optional: Minimum size of the buffer (Header + at least 1 element)
-                        min_binding_size: wgpu::BufferSize::new(8 + 8),
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let vertices: Vec<Vec2> = Shape::Triangle.cast();
-        let (vertex_buffer, bind_group) = Self::create_vertex_buffer(device, queue, &layout, &vertices);
+    pub fn init(device: &Device, shape: Shape) -> Self {
+        let vertices = shape.cast();
+        let params = Params {
+            pos: Vec2::ZERO,
+            scale: 0.3,
+            rot: 0.140,
+        };
+        let mut world_space = None;
+        let world = Self::cast_worldspace(&mut world_space, &vertices, &params);
+        let buffer = SimpleBuffer::init_with(&device, world);
 
         Self {
-            vertices: vertices.clone(),
-            params: Params {
-                pos: Vec2::ZERO,
-                scale: 1.0,
-                rot: 0.0,
-            },
-            world_space: None,
-            vertex_buffer,
-            bind_group,
-            layout,
+            vertices,
+            params,
+            world_space,
+            buffer,
+            current_shape: shape,
         }
     }
 
-    pub fn create_vertex_buffer(device: &Device, queue: &Queue, layout: &BindGroupLayout, vertices: &[Vec2]) -> (Buffer, BindGroup) {
-        let length = vertices.len() as u32;
-        let vertices_bytes = cast_slice(vertices);
-        let length_bytes = bytes_of(&length);
-        let padding_bytes = &[0u8; 4];
-
-        let buffer = device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: (vertices_bytes.len() + length_bytes.len() + padding_bytes.len()) as u64,
-            usage: BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        });
-
-        queue.write_buffer(&buffer, 0, length_bytes);
-        queue.write_buffer(&buffer, 4, padding_bytes);
-        queue.write_buffer(&buffer, 8, vertices_bytes);
-
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: None,
-            layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
-        });
-
-        (buffer, bind_group)
-    }
-
-    /// assumes size is correct
-    pub fn update_buffer(queue: &Queue, buffer: &Buffer, vertices: &[Vec2]) {
-        queue.write_buffer(buffer, 8, cast_slice(vertices));
-    }
-
-    pub fn cast_worldspace<'a>(world_space: &'a mut Option<Vec<Vec2>>, vertices: &[Vec2], params: &Params) -> &'a [Vec2] {
+    pub fn cast_worldspace<'a>(
+        world_space: &'a mut Option<Vec<Vec2>>,
+        vertices: &[Vec2],
+        params: &Params,
+    ) -> &'a [Vec2] {
         if world_space.is_none() {
             let mut out = Vec::with_capacity(vertices.len());
 
@@ -147,25 +180,25 @@ impl Polygon {
             *world_space = Some(out);
         }
 
-        world_space.as_ref().unwrap()
+        unsafe { world_space.as_ref().unwrap_unchecked() }
     }
 
-    pub fn set_shape(&mut self, device: &Device, queue: &Queue, shape: Shape) {
+    pub fn set_shape(&mut self, device: &Device, shape: Shape) {
+        self.world_space = None;
         self.vertices = shape.cast();
-        let adjusted_verts = Self::cast_worldspace(&mut self.world_space, &self.vertices, &self.params);
-        let (vertex_buffer, bind_group) = Self::create_vertex_buffer(device, queue, &self.layout, adjusted_verts);
-        self.vertex_buffer.destroy();
-        self.vertex_buffer = vertex_buffer;
-        self.bind_group = bind_group;
+        let world = Self::cast_worldspace(&mut self.world_space, &self.vertices, &self.params);
+        self.buffer = SimpleBuffer::init_with(&device, world);
+        self.current_shape = shape;
     }
 
     pub fn edit(&mut self, queue: &Queue, mut f: impl FnMut(&mut Params)) {
         let mut params_c = self.params;
         f(&mut params_c);
         if params_c != self.params {
+            self.world_space = None;
             self.params = params_c;
             let verts = Self::cast_worldspace(&mut self.world_space, &self.vertices, &self.params);
-            Self::update_buffer(queue, &self.vertex_buffer, verts);
+            self.buffer.write_with(&queue, verts);
         }
     }
 }
@@ -177,8 +210,6 @@ pub struct Params {
     pub rot: f32,
 }
 
-
-
 fn align_to(size: u32, alignment: u32) -> u32 {
     (size + alignment - 1) & !(alignment - 1)
 }
@@ -189,5 +220,5 @@ pub struct PolyInfo {
     a_coff: f32,
     b_coff: f32,
     start_index: u32,
-    length: u32
+    length: u32,
 }
