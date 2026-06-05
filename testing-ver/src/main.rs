@@ -193,7 +193,7 @@ fn restore_default_blending() {
 
 const LINE_THICK: f32 = 0.5;
 const MAX_BOUNCE: u32 = 300000;
-const NO_LAZERS: usize = 500000;
+const NO_LAZERS: usize = 5000;
 const OFFSET: f32 = 0.00001;
 const DISPENSER: f32 = 0.03;
 const CUTOFF: f32 = 0.000005;
