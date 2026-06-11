@@ -9,6 +9,7 @@
     <style>
         body {
             margin: 0;
+            background: black;
         }
         canvas {
             display: block;
@@ -18,9 +19,53 @@
         canvas:focus {
             outline: none
         }
+
+
+        .spinner-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
     </style>
 <link rel="modulepreload" href="https://zcd13.github.io/refraction_app/light_thinggo-1ae710c46d90e30c.js" crossorigin="anonymous" integrity="sha384-2g6uMBTw4cGRedT5DznOU3NSD1OJGzDoCWjjT+ncsxYlPd7AYWAWo0m4FJES1N9q"><link rel="preload" href="https://zcd13.github.io/refraction_app/light_thinggo-1ae710c46d90e30c_bg.wasm" crossorigin="anonymous" integrity="sha384-fopyHohOCNrKwt7X2kVSqbKsMojK+dtNJsLJ1lEaLOFh/7rENV1v8CFxioC03/90" as="fetch" type="application/wasm"></head>
 <body>
+
+    <div id="loader">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <script type="module">
+
+        window.addEventListener("TrunkApplicationStarted", () => {
+            console.log("Trunk has started");
+            const loader = document.getElementById('loader');
+            if (loader) {
+                loader.style.opacity = '0';
+                setTimeout(() => loader.remove(), 500);
+            }
+        }, { once: true });
+
+        console.log("Script started");
+    </script>
+
+
 <script type="module">
 import init, * as bindings from 'https://zcd13.github.io/refraction_app/light_thinggo-1ae710c46d90e30c.js';
 const wasm = await init({ module_or_path: 'https://zcd13.github.io/refraction_app/light_thinggo-1ae710c46d90e30c_bg.wasm' });
