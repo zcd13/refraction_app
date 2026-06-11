@@ -9,6 +9,7 @@
     <style>
         body {
             margin: 0;
+            background: black;
         }
         canvas {
             display: block;
@@ -18,8 +19,52 @@
         canvas:focus {
             outline: none
         }
+
+
+        .spinner-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
     </style>
 </head>
-<body></body>
+<body>
+
+    <div id="loader">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+        </div>
+    </div>
+
+    <script type="module">
+
+        window.addEventListener("TrunkApplicationStarted", () => {
+            console.log("Trunk has started");
+            const loader = document.getElementById('loader');
+            if (loader) {
+                loader.style.opacity = '0';
+                setTimeout(() => loader.remove(), 500);
+            }
+        }, { once: true });
+
+        console.log("Script started");
+    </script>
+
+</body>
 
 </html>
