@@ -20,12 +20,12 @@ pub async fn create_graphics(window: Arc<Window>, proxy: EventLoopProxy<Graphics
     let surface = instance.create_surface(Arc::clone(&window)).unwrap();
     let adapter = instance
         .request_adapter(&RequestAdapterOptions {
-            power_preference: PowerPreference::HighPerformance, // Power preference for the device
-            force_fallback_adapter: false, // Indicates that only a fallback ("software") adapter can be used
-            compatible_surface: Some(&surface), // Guarantee that the adapter can render to this surface
+            power_preference: PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: Some(&surface),
         })
         .await
-        .expect("Could not get an adapter (GPU).");
+        .expect("Could not get an adapter");
 
     let (device, queue) = adapter
         .request_device(&DeviceDescriptor {
@@ -40,9 +40,7 @@ pub async fn create_graphics(window: Arc<Window>, proxy: EventLoopProxy<Graphics
         .await
         .expect("Failed to get device");
 
-    // Get physical pixel dimensions inside the window
     let size = window.inner_size();
-    // Make the dimensions at least size 1, otherwise wgpu would panic
     let width = size.width.max(1);
     let height = size.height.max(1);
     let mut surface_config = surface

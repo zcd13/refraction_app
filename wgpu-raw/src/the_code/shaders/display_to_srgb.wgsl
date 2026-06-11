@@ -43,9 +43,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
 
-    // 1. Filmic Tonemapping (ACES-like)
-    // This curve prevents high values from clipping too harshly
-    // and balances channel intensity.
+    // Filmic Tonemapping
     let a = 2.51;
     let b = 0.03;
     let c = 2.43;
@@ -53,9 +51,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let e = 0.14;
     let mapped = (hdr_color * (a * hdr_color + b)) / (hdr_color * (c * hdr_color + d) + e);
 
-    // 2. Gamma Correction
-    // Raising to power of 1/2.2 expands the lower end (darker values)
-    // making them much more perceptible to the human eye.
+    // Gamma Correction
     let gamma = 2.2;
     let final_color = pow(max(vec3<f32>(0.0), mapped), vec3<f32>(1.0 / gamma));
 

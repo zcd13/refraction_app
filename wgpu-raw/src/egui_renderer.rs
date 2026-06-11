@@ -5,6 +5,8 @@ use egui_winit::State;
 use egui_winit::winit::event::WindowEvent;
 use egui_winit::winit::window::Window;
 
+
+/// credit https://github.com/kaphula/winit-egui-wgpu-template for this
 pub struct EguiRenderer {
     state: State,
     renderer: Renderer,

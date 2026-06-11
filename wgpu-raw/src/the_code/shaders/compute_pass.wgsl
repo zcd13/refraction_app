@@ -27,13 +27,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let float_wave = packed_to_wavelength(data[index].wave_length_and_ior);
         let ior_glass = get_ior(float_wave, settings.a_factor, settings.b_factor);
 
-        var n1: f32 = 1.0;       // Default Air
-        var n2: f32 = ior_glass; // Default Glass
+        var n1: f32 = 1.0;
+        var n2: f32 = ior_glass;
 
         var op = -1.0; // move in normal direction
         if dot(data[index].dir, c.collision_normal) > 0.0 {
-            n1 = ior_glass; // We are in the glass
-            n2 = 1.0;       // We are exiting to air
+            n1 = ior_glass; //  glass
+            n2 = 1.0;       //  exiting to air
             op *= -1.0;
         }
 

@@ -6,7 +6,6 @@ pub struct HasSampler {
     pub is_filtering: bool,
 }
 
-// Typestate markers for the builder
 pub struct BuilderNoSampler;
 pub struct BuilderHasSampler<'a> {
     pub desc: wgpu::SamplerDescriptor<'a>,
@@ -16,7 +15,7 @@ pub struct BuilderHasSampler<'a> {
 pub struct GpuTexture<S> {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
-    pub sampler_state: S, // This will be either NoSampler or HasSampler
+    pub sampler_state: S,
     pub bind_group_layout: wgpu::BindGroupLayout,
     pub bind_group: wgpu::BindGroup,
     pub format: wgpu::TextureFormat,
@@ -34,7 +33,6 @@ pub struct GpuTextureBuilder<'a, S> {
 }
 
 impl<'a> GpuTextureBuilder<'a, BuilderNoSampler> {
-    /// Start building a new texture. Defaults to NoSampler.
     pub fn new(
         device: &'a wgpu::Device,
         wh: (u32, u32),
@@ -57,7 +55,6 @@ impl<'a> GpuTextureBuilder<'a, BuilderNoSampler> {
         self
     }
 
-    /// Consumes the current builder and returns a NEW builder with the HasSampler type.
     pub fn with_sampler(
         self,
         desc: wgpu::SamplerDescriptor<'a>,
@@ -74,7 +71,6 @@ impl<'a> GpuTextureBuilder<'a, BuilderNoSampler> {
         }
     }
 
-    /// Builds a texture WITHOUT a sampler
     pub fn make(self) -> GpuTexture<NoSampler> {
         let bind_group_layout =
             self.device
@@ -121,7 +117,6 @@ impl<'a> GpuTextureBuilder<'a, BuilderHasSampler<'a>> {
         self
     }
 
-    /// Builds a texture WITH a sampler
     pub fn make(self) -> GpuTexture<HasSampler> {
         let sampler = self.device.create_sampler(&self.sampler_info.desc);
 
@@ -183,7 +178,6 @@ impl<'a> GpuTextureBuilder<'a, BuilderHasSampler<'a>> {
     }
 }
 
-// Shared internal function
 fn create_resources(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
@@ -232,7 +226,6 @@ fn create_resources(
     (texture, view, bind_group)
 }
 
-// Type-safe resizing
 impl GpuTexture<NoSampler> {
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         let (t, v, bg) = create_resources(

@@ -147,7 +147,7 @@ impl Polygon {
         };
         let mut world_space = None;
         let world = Self::cast_worldspace(&mut world_space, &vertices, &params);
-        let buffer = SimpleBuffer::init_with(&device, world);
+        let buffer = SimpleBuffer::init_with(device, world);
 
         Self {
             vertices,
@@ -187,7 +187,7 @@ impl Polygon {
         self.world_space = None;
         self.vertices = shape.cast();
         let world = Self::cast_worldspace(&mut self.world_space, &self.vertices, &self.params);
-        self.buffer = SimpleBuffer::init_with(&device, world);
+        self.buffer = SimpleBuffer::init_with(device, world);
         self.current_shape = shape;
     }
 
@@ -198,7 +198,7 @@ impl Polygon {
             self.world_space = None;
             self.params = params_c;
             let verts = Self::cast_worldspace(&mut self.world_space, &self.vertices, &self.params);
-            self.buffer.write_with(&queue, verts);
+            self.buffer.write_with(queue, verts);
         }
     }
 }

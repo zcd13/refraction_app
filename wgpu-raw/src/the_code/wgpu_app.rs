@@ -83,8 +83,6 @@ impl WgpuApplication {
             &polygon.buffer,
         );
 
-
-
         Self {
             device,
             queue,
@@ -449,7 +447,7 @@ impl LinePrimitiveRenderer {
         ray_buffer: &SimpleBuffer<LightRay>,
         settings_uniform: &AutoUniform<Settings>,
     ) {
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("Line Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: output_view,
@@ -480,7 +478,7 @@ impl LinePrimitiveRenderer {
         settings_uniform: &AutoUniform<Settings>,
         geometry_buffer: &SimpleBuffer<Vec2>,
     ) {
-        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("Line Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: output_view,
@@ -513,8 +511,7 @@ pub fn format_bytes(bytes: usize) -> String {
         size /= 1024.0;
         i += 1;
     }
-
-    // Don't show decimal places if it's just bytes
+    
     if i == 0 {
         format!("{} {}", bytes, suffixes[i])
     } else {
@@ -664,7 +661,7 @@ impl TextureSamplerRenderer {
     ) -> Self {
         // Load the shader from the WGSL file above
 
-        let shader = combine(&device, &[
+        let shader = combine(device, &[
             include_str!("shaders/display_to_srgb.wgsl"),
             Settings::WGSL(),
         ]);
